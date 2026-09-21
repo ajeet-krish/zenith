@@ -37,7 +37,7 @@ export function OrbitScene() {
   }, [satellites, currentEpoch]);
 
   return (
-    <div className="w-full h-full bg-zenith-dark">
+    <div className="w-full h-full bg-void">
       <Canvas
         camera={{
           position: [30, 20, 30],
@@ -46,7 +46,7 @@ export function OrbitScene() {
           far: 20000,
         }}
         gl={{ antialias: true, alpha: false }}
-        style={{ background: '#050510' }}
+        style={{ background: '#0a0a0f' }}
       >
         {/* Star field background */}
         <Stars

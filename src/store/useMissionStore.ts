@@ -57,15 +57,15 @@ interface MissionState {
 }
 
 // =============================================================================
-// Category Colors
+// Category Colors (Dracula neon palette)
 // =============================================================================
 
 export const CATEGORY_COLORS: Record<Satellite['category'], string> = {
-  LEO: '#26b8d9',
-  MEO: '#22c55e',
-  GEO: '#f97316',
-  HEO: '#a855f7',
-  DEBRIS: '#ef4444',
+  LEO: '#8be9fd',
+  MEO: '#50fa7b',
+  GEO: '#ffb86c',
+  HEO: '#bd93f9',
+  DEBRIS: '#ff5555',
 };
 
 // =============================================================================

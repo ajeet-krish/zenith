@@ -30,19 +30,19 @@ export function SatelliteList({
     <div className="panel flex flex-col h-full">
       <div className="panel-header flex items-center justify-between">
         <span className="panel-label">SATELLITES</span>
-        <span className="text-[10px] font-mono text-zenith-muted">{satellites.length}</span>
+        <span className="text-[10px] font-mono text-comment">{satellites.length}</span>
       </div>
 
       {/* Satellite list */}
       <div className="flex-1 overflow-y-auto min-h-0">
         {satellites.length === 0 ? (
           <div className="px-3 py-6 text-center">
-            <div className="text-xs text-zenith-muted font-mono mb-2">
+            <div className="text-xs text-comment font-mono mb-2">
               No satellites loaded
             </div>
             <button
               onClick={onOpenTleInput}
-              className="text-[10px] font-mono text-zenith-purple hover:text-zenith-purple/80 transition-colors"
+              className="text-[10px] font-mono text-neon-purple hover:text-neon-purple/80 transition-colors"
             >
               Add a satellite
             </button>
@@ -60,10 +60,10 @@ export function SatelliteList({
                     className="w-1.5 h-1.5 rounded-full"
                     style={{ backgroundColor: CATEGORY_COLORS[cat] }}
                   />
-                  <span className="text-[10px] font-mono text-zenith-muted uppercase">
+                  <span className="text-[10px] font-mono text-comment uppercase">
                     {cat}
                   </span>
-                  <span className="text-[10px] font-mono text-zenith-subtle">
+                  <span className="text-[10px] font-mono text-space-400">
                     {sats.length}
                   </span>
                 </div>
@@ -85,7 +85,7 @@ export function SatelliteList({
       </div>
 
       {/* Add TLE button */}
-      <div className="px-3 py-2 border-t border-zenith-border">
+      <div className="px-3 py-2 border-t border-dust">
         <button
           onClick={onOpenTleInput}
           className="w-full btn-primary text-[11px] font-mono py-1.5"
@@ -115,7 +115,7 @@ function SatelliteRow({
     <div
       className={`px-3 py-1.5 flex items-center gap-2 cursor-pointer transition-colors ${
         isSelected
-          ? 'bg-zenith-purple/10 border-l-2 border-l-zenith-purple'
+          ? 'bg-neon-purple/10 border-l-2 border-l-neon-purple'
           : 'hover:bg-white/5 border-l-2 border-l-transparent'
       }`}
       onClick={onSelect}
@@ -131,7 +131,7 @@ function SatelliteRow({
         <div className="text-[11px] font-mono text-white truncate">
           {satellite.name}
         </div>
-        <div className="text-[9px] font-mono text-zenith-muted">
+        <div className="text-[9px] font-mono text-comment">
           {satellite.noradId}
         </div>
       </div>
@@ -145,7 +145,7 @@ function SatelliteRow({
         className={`p-1 rounded transition-colors ${
           satellite.visible
             ? 'text-white/60 hover:text-white'
-            : 'text-zenith-muted/30 hover:text-zenith-muted'
+            : 'text-comment/30 hover:text-comment'
         }`}
         title={satellite.visible ? 'Hide' : 'Show'}
         aria-label={`${satellite.visible ? 'Hide' : 'Show'} ${satellite.name}`}

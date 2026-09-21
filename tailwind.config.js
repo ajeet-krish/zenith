@@ -4,27 +4,43 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Zenith dark base
-        'zenith-dark': '#050510',
-        'zenith-surface': '#0d0d1a',
-        'zenith-card': '#141428',
-        'zenith-border': '#1e1e3a',
+        // Dracula background scale
+        void: '#0a0a0f',
+        'deep-space': '#0f0f15',
+        nebula: '#282a36',
+        'card-surface': '#21222c',
+        dust: '#44475a',
+        comment: '#6272a4',
 
-        // Zenith accent palette
-        'zenith-purple': '#a855f7',
-        'zenith-blue': '#3b82f6',
-        'zenith-cyan': '#06b6d4',
-        'zenith-green': '#22c55e',
-        'zenith-orange': '#f97316',
-        'zenith-red': '#ef4444',
+        // Backward-compatible space scale (remapped to Dracula)
+        space: {
+          50: '#f8f8f2',
+          100: '#f8f8f2',
+          200: '#f8f8f2',
+          300: '#e0e0e0',
+          400: '#b0b0b0',
+          500: '#6272a4',
+          600: '#6272a4',
+          700: '#44475a',
+          800: '#44475a',
+          900: '#282a36',
+          950: '#0a0a0f',
+        },
 
-        // Muted text colors
-        'zenith-muted': '#6b7280',
-        'zenith-subtle': '#9ca3af',
+        // Neon palette (Dracula accents)
+        neon: {
+          purple: '#bd93f9',
+          cyan: '#8be9fd',
+          green: '#50fa7b',
+          pink: '#ff79c6',
+          orange: '#ffb86c',
+          red: '#ff5555',
+          yellow: '#f1fa8c',
+        },
       },
       fontFamily: {
-        mono: ['JetBrains Mono', 'Fira Code', 'monospace'],
-        sans: ['Inter', 'system-ui', 'sans-serif'],
+        mono: ['JetBrains Mono', 'monospace'],
+        sans: ['JetBrains Mono', 'monospace'],
       },
     },
   },

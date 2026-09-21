@@ -115,10 +115,10 @@ export function TLEInput({ onClose }: { onClose: () => void }) {
         aria-modal="true"
         aria-label="Add TLE data"
         tabIndex={-1}
-        className="relative w-full max-w-md bg-zenith-surface border border-zenith-border rounded-lg shadow-2xl animate-fade-in-up outline-none"
+        className="relative w-full max-w-md bg-card-surface border border-dust shadow-2xl animate-fade-in-up outline-none"
       >
         {/* Header */}
-        <div className="px-4 py-3 border-b border-zenith-border flex items-center justify-between">
+        <div className="px-4 py-3 border-b border-dust flex items-center justify-between">
           <span className="text-xs font-mono text-white font-semibold">ADD TLE</span>
           <button
             onClick={onClose}
@@ -135,7 +135,7 @@ export function TLEInput({ onClose }: { onClose: () => void }) {
         <div className="p-4 space-y-4">
           {/* Satellite name */}
           <div>
-            <label className="block text-[10px] font-mono text-zenith-muted uppercase mb-1">
+            <label className="block text-[10px] font-mono text-comment uppercase mb-1">
               Satellite Name
             </label>
             <input
@@ -149,7 +149,7 @@ export function TLEInput({ onClose }: { onClose: () => void }) {
 
           {/* Category selector */}
           <div>
-            <label className="block text-[10px] font-mono text-zenith-muted uppercase mb-1">
+            <label className="block text-[10px] font-mono text-comment uppercase mb-1">
               Category
             </label>
             <div className="flex gap-1">
@@ -160,7 +160,7 @@ export function TLEInput({ onClose }: { onClose: () => void }) {
                   className={`flex items-center gap-1.5 px-2 py-1 rounded text-[10px] font-mono transition-colors ${
                     category === cat
                       ? 'bg-white/10 text-white'
-                      : 'text-zenith-muted hover:text-white hover:bg-white/5'
+                      : 'text-comment hover:text-white hover:bg-white/5'
                   }`}
                 >
                   <div
@@ -175,7 +175,7 @@ export function TLEInput({ onClose }: { onClose: () => void }) {
 
           {/* TLE text area */}
           <div>
-            <label className="block text-[10px] font-mono text-zenith-muted uppercase mb-1">
+            <label className="block text-[10px] font-mono text-comment uppercase mb-1">
               TLE Data (paste 2 lines)
             </label>
             <textarea
@@ -190,12 +190,12 @@ export function TLEInput({ onClose }: { onClose: () => void }) {
 
           {/* Error/success feedback */}
           {error && (
-            <div className="text-[10px] font-mono text-zenith-red bg-zenith-red/10 px-3 py-2 rounded">
+            <div className="text-[10px] font-mono text-neon-red bg-neon-red/10 px-3 py-2 rounded">
               {error}
             </div>
           )}
           {success && (
-            <div className="text-[10px] font-mono text-zenith-green bg-zenith-green/10 px-3 py-2 rounded">
+            <div className="text-[10px] font-mono text-neon-green bg-neon-green/10 px-3 py-2 rounded">
               Satellite added successfully.
             </div>
           )}

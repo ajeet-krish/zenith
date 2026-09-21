@@ -38,8 +38,8 @@ export function PropagationPanel() {
         <span
           className={`text-[9px] font-mono px-1.5 py-0.5 rounded ${
             wasmReady
-              ? 'text-zenith-green bg-zenith-green/10'
-              : 'text-zenith-orange bg-zenith-orange/10'
+              ? 'text-neon-green bg-neon-green/10'
+              : 'text-neon-orange bg-neon-orange/10'
           }`}
         >
           {wasmReady ? 'WASM' : 'TS'}
@@ -49,7 +49,7 @@ export function PropagationPanel() {
       <div className="px-3 py-2 space-y-3">
         {/* Propagation method */}
         <div>
-          <label className="block text-[9px] font-mono text-zenith-muted uppercase mb-1.5">
+          <label className="block text-[9px] font-mono text-comment uppercase mb-1.5">
             Method
           </label>
           <div className="flex gap-1">
@@ -59,8 +59,8 @@ export function PropagationPanel() {
                 onClick={() => setPropagationMethod(m.value)}
                 className={`flex-1 px-2 py-1.5 rounded text-[10px] font-mono transition-colors ${
                   propagationMethod === m.value
-                    ? 'bg-zenith-purple/20 text-zenith-purple border border-zenith-purple/30'
-                    : 'bg-white/5 text-zenith-muted hover:text-white hover:bg-white/10 border border-transparent'
+                    ? 'bg-neon-purple/20 text-neon-purple border border-neon-purple/30'
+                    : 'bg-white/5 text-comment hover:text-white hover:bg-white/10 border border-transparent'
                 }`}
               >
                 <div>{m.label}</div>
@@ -72,7 +72,7 @@ export function PropagationPanel() {
 
         {/* Force models */}
         <div>
-          <label className="block text-[9px] font-mono text-zenith-muted uppercase mb-1.5">
+          <label className="block text-[9px] font-mono text-comment uppercase mb-1.5">
             Force Models
           </label>
           <div className="flex gap-1">
@@ -82,8 +82,8 @@ export function PropagationPanel() {
                 onClick={() => toggleForceModel(f.key)}
                 className={`flex-1 px-1.5 py-1 rounded text-[10px] font-mono transition-colors ${
                   forceModels[f.key]
-                    ? 'bg-zenith-cyan/20 text-zenith-cyan border border-zenith-cyan/30'
-                    : 'bg-white/5 text-zenith-muted hover:text-white hover:bg-white/10 border border-transparent'
+                    ? 'bg-neon-cyan/20 text-neon-cyan border border-neon-cyan/30'
+                    : 'bg-white/5 text-comment hover:text-white hover:bg-white/10 border border-transparent'
                 }`}
               >
                 {f.label}
@@ -93,9 +93,9 @@ export function PropagationPanel() {
         </div>
 
         {/* Epoch display */}
-        <div className="flex items-center justify-between pt-1 border-t border-zenith-border">
-          <span className="text-[9px] font-mono text-zenith-muted">Epoch JD</span>
-          <span className="text-[10px] font-mono text-zenith-subtle tabular-nums">
+        <div className="flex items-center justify-between pt-1 border-t border-dust">
+          <span className="text-[9px] font-mono text-comment">Epoch JD</span>
+          <span className="text-[10px] font-mono text-space-400 tabular-nums">
             {formatJdShort(currentEpoch)}
           </span>
         </div>

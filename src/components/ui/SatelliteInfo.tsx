@@ -66,23 +66,23 @@ export function SatelliteInfo() {
       <div className="px-3 py-2 space-y-2">
         {/* NORAD ID */}
         <div className="flex items-center justify-between">
-          <span className="text-[9px] font-mono text-zenith-muted">NORAD ID</span>
+          <span className="text-[9px] font-mono text-comment">NORAD ID</span>
           <span className="text-[10px] font-mono text-white">{satellite.noradId}</span>
         </div>
 
         {/* Category */}
         <div className="flex items-center justify-between">
-          <span className="text-[9px] font-mono text-zenith-muted">Category</span>
+          <span className="text-[9px] font-mono text-comment">Category</span>
           <span className="text-[10px] font-mono text-white">{satellite.category}</span>
         </div>
 
         {/* Divider */}
-        <div className="border-t border-zenith-border" />
+        <div className="border-t border-dust" />
 
         {/* Orbital elements */}
         {elements ? (
           <>
-            <div className="text-[9px] font-mono text-zenith-muted uppercase mb-1">
+            <div className="text-[9px] font-mono text-comment uppercase mb-1">
               Orbital Elements
             </div>
             <div className="grid grid-cols-2 gap-x-4 gap-y-1">
@@ -95,16 +95,16 @@ export function SatelliteInfo() {
             </div>
           </>
         ) : (
-          <div className="text-[10px] font-mono text-zenith-muted text-center py-2">
+          <div className="text-[10px] font-mono text-comment text-center py-2">
             No orbital data available
           </div>
         )}
 
         {/* Divider */}
-        <div className="border-t border-zenith-border" />
+        <div className="border-t border-dust" />
 
         {/* Derived quantities */}
-        <div className="text-[9px] font-mono text-zenith-muted uppercase mb-1">
+        <div className="text-[9px] font-mono text-comment uppercase mb-1">
           Derived
         </div>
         <div className="grid grid-cols-2 gap-x-4 gap-y-1">
@@ -130,10 +130,10 @@ function ElementRow({
 }) {
   return (
     <div className="flex items-baseline justify-between">
-      <span className="text-[10px] font-mono text-zenith-subtle">{label}</span>
+      <span className="text-[10px] font-mono text-space-400">{label}</span>
       <span className="text-[10px] font-mono text-white tabular-nums">
         {value.toFixed(precision)}
-        {unit ? <span className="text-zenith-muted ml-0.5">{unit}</span> : null}
+        {unit ? <span className="text-comment ml-0.5">{unit}</span> : null}
       </span>
     </div>
   );
@@ -152,10 +152,10 @@ function DerivedRow({
 }) {
   return (
     <div className="flex items-baseline justify-between">
-      <span className="text-[10px] font-mono text-zenith-subtle">{label}</span>
+      <span className="text-[10px] font-mono text-space-400">{label}</span>
       <span className="text-[10px] font-mono text-white tabular-nums">
         {value !== null ? format(value) : '--'}
-        {value !== null && unit ? <span className="text-zenith-muted ml-0.5">{unit}</span> : null}
+        {value !== null && unit ? <span className="text-comment ml-0.5">{unit}</span> : null}
       </span>
     </div>
   );

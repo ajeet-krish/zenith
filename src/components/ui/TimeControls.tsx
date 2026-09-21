@@ -47,7 +47,7 @@ function formatJd(jd: number): string {
  * Get the orbital period for the selected satellite (if available).
  */
 function getOrbitalPeriod(satId: string | null): number {
-  if (!satId) return 5400; // default ~90 min
+  if (!satId) return 5400;
   const state = useMissionStore.getState();
   const sat = state.satellites.find((s) => s.id === satId);
   if (!sat || sat.handle === null) return 5400;
@@ -124,7 +124,7 @@ export function TimeControls() {
       </div>
 
       {/* Date display */}
-      <div className="px-3 py-2 border-b border-zenith-border">
+      <div className="px-3 py-2 border-b border-dust">
         <div className="font-mono text-xs text-white tabular-nums">
           {formatJd(currentEpoch)}
         </div>
@@ -192,16 +192,16 @@ export function TimeControls() {
       </div>
 
       {/* Speed selector */}
-      <div className="px-3 py-2 border-t border-zenith-border">
+      <div className="px-3 py-2 border-t border-dust">
         <div className="flex items-center gap-1">
           {SPEED_OPTIONS.map((speed) => (
             <button
               key={speed}
               onClick={() => setTimeSpeed(speed)}
-              className={`text-[10px] font-mono px-1.5 py-0.5 rounded transition-colors ${
+              className={`text-[10px] font-mono px-1.5 py-0.5 transition-colors ${
                 timeSpeed === speed
-                  ? 'bg-zenith-purple/30 text-zenith-purple'
-                  : 'text-zenith-muted hover:text-white hover:bg-white/5'
+                  ? 'bg-neon-purple/30 text-neon-purple'
+                  : 'text-comment hover:text-space-50 hover:bg-white/5'
               }`}
               aria-label={`Set speed to ${speed}x`}
             >
