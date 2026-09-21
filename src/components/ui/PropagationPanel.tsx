@@ -1,0 +1,105 @@
+import { useMissionStore } from '@/store/useMissionStore';
+
+const PROPAGATION_METHODS: { value: 'sgp4' | 'kepler' | 'rk45'; label: string; desc: string }[] = [
+  { value: 'sgp4', label: 'SGP4', desc: 'Analytical' },
+  { value: 'kepler', label: 'Kepler', desc: 'Two-body' },
+  { value: 'rk45', label: 'RK45', desc: 'Numerical' },
+];
+
+const FORCE_MODELS: { key: 'j2' | 'drag' | 'srp' | 'thirdBody'; label: string }[] = [
+  { key: 'j2', label: 'J2' },
+  { key: 'drag', label: 'Drag' },
+  { key: 'srp', label: 'SRP' },
+  { key: 'thirdBody', label: '3rd Body' },
+];
+
+/**
+ * Format Julian Date for display.
+ */
+function formatJdShort(jd: number): string {
+  return jd.toFixed(4);
+}
+
+/**
+ * PropagationPanel - panel for propagation method and force model configuration.
+ */
+export function PropagationPanel() {
+  const propagationMethod = useMissionStore((s) => s.propagationMethod);
+  const forceModels = useMissionStore((s) => s.forceModels);
+  const currentEpoch = useMissionStore((s) => s.currentEpoch);
+  const wasmReady = useMissionStore((s) => s.wasmReady);
+  const setPropagationMethod = useMissionStore((s) => s.setPropagationMethod);
+  const toggleForceModel = useMissionStore((s) => s.toggleForceModel);
+
+  return (
+    <div className="panel">
+      <div className="panel-header">
+        <span className="panel-label">PROPAGATION</span>
+        <span
+          className={`text-[9px] font-mono px-1.5 py-0.5 rounded ${
+            wasmReady
+              ? 'text-zenith-green bg-zenith-green/10'
+              : 'text-zenith-orange bg-zenith-orange/10'
+          }`}
+        >
+          {wasmReady ? 'WASM' : 'TS'}
+        </span>
+      </div>
+
+      <div className="px-3 py-2 space-y-3">
+        {/* Propagation method */}
+        <div>
+          <label className="block text-[9px] font-mono text-zenith-muted uppercase mb-1.5">
+            Method
+          </label>
+          <div className="flex gap-1">
+            {PROPAGATION_METHODS.map((m) => (
+              <button
+                key={m.value}
+                onClick={() => setPropagationMethod(m.value)}
+                className={`flex-1 px-2 py-1.5 rounded text-[10px] font-mono transition-colors ${
+                  propagationMethod === m.value
+                    ? 'bg-zenith-purple/20 text-zenith-purple border border-zenith-purple/30'
+                    : 'bg-white/5 text-zenith-muted hover:text-white hover:bg-white/10 border border-transparent'
+                }`}
+              >
+                <div>{m.label}</div>
+                <div className="text-[8px] opacity-60">{m.desc}</div>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Force models */}
+        <div>
+          <label className="block text-[9px] font-mono text-zenith-muted uppercase mb-1.5">
+            Force Models
+          </label>
+          <div className="flex gap-1">
+            {FORCE_MODELS.map((f) => (
+              <button
+                key={f.key}
+                onClick={() => toggleForceModel(f.key)}
+                className={`flex-1 px-1.5 py-1 rounded text-[10px] font-mono transition-colors ${
+                  forceModels[f.key]
+                    ? 'bg-zenith-cyan/20 text-zenith-cyan border border-zenith-cyan/30'
+                    : 'bg-white/5 text-zenith-muted hover:text-white hover:bg-white/10 border border-transparent'
+                }`}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Epoch display */}
+        <div className="flex items-center justify-between pt-1 border-t border-zenith-border">
+          <span className="text-[9px] font-mono text-zenith-muted">Epoch JD</span>
+          <span className="text-[10px] font-mono text-zenith-subtle tabular-nums">
+            {formatJdShort(currentEpoch)}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}

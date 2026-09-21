@@ -1,0 +1,168 @@
+import { useMissionStore, CATEGORY_COLORS } from '@/store/useMissionStore';
+import type { Satellite } from '@/store/useMissionStore';
+
+/**
+ * SatelliteList - sidebar panel showing all loaded satellites.
+ *
+ * Features: satellite list with visibility toggle, selection, category colors.
+ */
+export function SatelliteList({
+  onOpenTleInput,
+}: {
+  onOpenTleInput: () => void;
+}) {
+  const satellites = useMissionStore((s) => s.satellites);
+  const selectedId = useMissionStore((s) => s.selectedSatelliteId);
+  const selectSatellite = useMissionStore((s) => s.selectSatellite);
+  const toggleVisibility = useMissionStore((s) => s.toggleSatelliteVisibility);
+
+  // Group by category
+  const grouped = satellites.reduce<Record<string, Satellite[]>>((acc, sat) => {
+    const cat = sat.category;
+    if (!acc[cat]) acc[cat] = [];
+    acc[cat].push(sat);
+    return acc;
+  }, {});
+
+  const categoryOrder: Satellite['category'][] = ['LEO', 'MEO', 'GEO', 'HEO', 'DEBRIS'];
+
+  return (
+    <div className="panel flex flex-col h-full">
+      <div className="panel-header flex items-center justify-between">
+        <span className="panel-label">SATELLITES</span>
+        <span className="text-[10px] font-mono text-zenith-muted">{satellites.length}</span>
+      </div>
+
+      {/* Satellite list */}
+      <div className="flex-1 overflow-y-auto min-h-0">
+        {satellites.length === 0 ? (
+          <div className="px-3 py-6 text-center">
+            <div className="text-xs text-zenith-muted font-mono mb-2">
+              No satellites loaded
+            </div>
+            <button
+              onClick={onOpenTleInput}
+              className="text-[10px] font-mono text-zenith-purple hover:text-zenith-purple/80 transition-colors"
+            >
+              Add a satellite
+            </button>
+          </div>
+        ) : (
+          categoryOrder.map((cat) => {
+            const sats = grouped[cat];
+            if (!sats || sats.length === 0) return null;
+
+            return (
+              <div key={cat}>
+                {/* Category header */}
+                <div className="px-3 py-1.5 flex items-center gap-2 bg-black/20">
+                  <div
+                    className="w-1.5 h-1.5 rounded-full"
+                    style={{ backgroundColor: CATEGORY_COLORS[cat] }}
+                  />
+                  <span className="text-[10px] font-mono text-zenith-muted uppercase">
+                    {cat}
+                  </span>
+                  <span className="text-[10px] font-mono text-zenith-subtle">
+                    {sats.length}
+                  </span>
+                </div>
+
+                {/* Satellites in category */}
+                {sats.map((sat) => (
+                  <SatelliteRow
+                    key={sat.id}
+                    satellite={sat}
+                    isSelected={selectedId === sat.id}
+                    onSelect={() => selectSatellite(selectedId === sat.id ? null : sat.id)}
+                    onToggleVisibility={() => toggleVisibility(sat.id)}
+                  />
+                ))}
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      {/* Add TLE button */}
+      <div className="px-3 py-2 border-t border-zenith-border">
+        <button
+          onClick={onOpenTleInput}
+          className="w-full btn-primary text-[11px] font-mono py-1.5"
+        >
+          + Add TLE
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Single satellite row in the list.
+ */
+function SatelliteRow({
+  satellite,
+  isSelected,
+  onSelect,
+  onToggleVisibility,
+}: {
+  satellite: Satellite;
+  isSelected: boolean;
+  onSelect: () => void;
+  onToggleVisibility: () => void;
+}) {
+  return (
+    <div
+      className={`px-3 py-1.5 flex items-center gap-2 cursor-pointer transition-colors ${
+        isSelected
+          ? 'bg-zenith-purple/10 border-l-2 border-l-zenith-purple'
+          : 'hover:bg-white/5 border-l-2 border-l-transparent'
+      }`}
+      onClick={onSelect}
+    >
+      {/* Category color dot */}
+      <div
+        className="w-2 h-2 rounded-full shrink-0"
+        style={{ backgroundColor: satellite.color }}
+      />
+
+      {/* Name */}
+      <div className="flex-1 min-w-0">
+        <div className="text-[11px] font-mono text-white truncate">
+          {satellite.name}
+        </div>
+        <div className="text-[9px] font-mono text-zenith-muted">
+          {satellite.noradId}
+        </div>
+      </div>
+
+      {/* Visibility toggle */}
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          onToggleVisibility();
+        }}
+        className={`p-1 rounded transition-colors ${
+          satellite.visible
+            ? 'text-white/60 hover:text-white'
+            : 'text-zenith-muted/30 hover:text-zenith-muted'
+        }`}
+        title={satellite.visible ? 'Hide' : 'Show'}
+        aria-label={`${satellite.visible ? 'Hide' : 'Show'} ${satellite.name}`}
+      >
+        {satellite.visible ? (
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+            <circle cx="12" cy="12" r="3" />
+          </svg>
+        ) : (
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" />
+            <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" />
+            <line x1="1" y1="1" x2="23" y2="23" />
+          </svg>
+        )}
+      </button>
+    </div>
+  );
+}
