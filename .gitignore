@@ -1,0 +1,17 @@
+node_modules/
+dist/
+docs/
+.DS_Store
+*.log
+build/
+wasm/build/
+public/wasm/
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Build cache
+tsconfig.tsbuildinfo
+cache/
