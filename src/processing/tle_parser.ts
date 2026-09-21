@@ -97,18 +97,24 @@ export function tle_to_jd(epoch_year: number, epoch_day: number): number {
   const full_year = century + epoch_year
 
   // Meeus algorithm: compute JD of Jan 0.0 then add epoch_day.
-  // For January and February, treat as month 13/14 of the previous year.
+  // For January (month 1), treat as month 13 of the previous year.
   const m = 1 // January
-  const y2 = full_year + 4800 - (m <= 2 ? 1 : 0)
-  const m2 = m + (m <= 2 ? 12 : 0) - 2
+  const y_adj = full_year + (m <= 2 ? -1 : 0)
+  const m_adj = m + (m <= 2 ? 12 : 0)
 
-  // JD of January 0.0 (noon before Jan 1) for full_year
-  const jd_jan0_noon =
-    Math.floor(365.25 * (y2 + 4716)) + Math.floor(30.6001 * (m2 + 1)) - 1524.5
+  // Gregorian calendar correction factor
+  const a = Math.floor(y_adj / 100)
+  const b = 2 - a + Math.floor(a / 4)
 
-  // epoch_day is 1-indexed day-of-year with fraction. Jan 0.0 = midnight before Jan 1,
-  // so jd = jd_jan0_noon - 0.5 + epoch_day (converting from noon-based to midnight-based)
-  return jd_jan0_noon - 0.5 + epoch_day
+  // JD at midnight Jan 0.0 (= midnight between Dec 30 and Dec 31 of previous year)
+  const jd_jan0 =
+    Math.floor(365.25 * (y_adj + 4716)) +
+    Math.floor(30.6001 * (m_adj + 1)) +
+    b -
+    1524.5
+
+  // epoch_day = 1.0 is midnight Jan 1, so jd = jd_jan0 + epoch_day
+  return jd_jan0 + epoch_day
 }
 
 // ---------------------------------------------------------------------------
@@ -154,7 +160,7 @@ export function parse_tle(
     )
   }
 
-  const classification = (l1[8] ?? 'U') as 'U' | 'C' | 'S'
+  const classification = (l1[7] ?? 'U') as 'U' | 'C' | 'S'
   const intl_designator = l1.substring(9, 17).trim()
 
   const epoch_year = parseInt(l1.substring(18, 20), 10)
@@ -162,9 +168,9 @@ export function parse_tle(
   const epoch_jd = tle_to_jd(epoch_year, epoch_day)
 
   const mean_motion_dot = parseFloat(l1.substring(34, 44))
-  const mean_motion_ddot = parse_implied_decimal(l1.substring(44, 50))
-  const bstar = parse_implied_decimal(l1.substring(52, 58))
-  const element_set_number = parseInt(l1.substring(60, 63).trim(), 10)
+  const mean_motion_ddot = parse_implied_decimal(l1.substring(44, 52))
+  const bstar = parse_implied_decimal(l1.substring(53, 61))
+  const element_set_number = parseInt(l1.substring(62, 68).trim(), 10)
 
   // --- Line 2 fields ---
   const inclination = parseFloat(l2.substring(8, 16))
