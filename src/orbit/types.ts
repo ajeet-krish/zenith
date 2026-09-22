@@ -201,7 +201,7 @@ export interface MonteCarloResult {
 }
 
 export interface WalkerDeltaConfig {
-  inclinationRad: number
+  inclinationDeg: number
   totalSats: number
   numPlanes: number
   phasingFactor: number

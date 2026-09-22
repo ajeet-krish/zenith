@@ -117,12 +117,21 @@ function sgp4_propagate_ts(
     (-sin_raan * sin_argp + cos_raan * cos_argp * cos_i) * y_orb
   const z = sin_argp * sin_i * x_orb + cos_argp * sin_i * y_orb
 
-  // Velocity (simplified)
+  // Velocity in orbital plane
   const v = Math.sqrt(MU_EARTH / a)
-  const vx = -v * Math.sin(nu)
-  const vy = v * Math.cos(nu)
+  const vx_orb = -v * Math.sin(nu)
+  const vy_orb = v * Math.cos(nu)
 
-  return { x, y, z, vx, vy, vz: 0 }
+  // Rotate velocity to TEME using same 3-1-3 rotation as position
+  const vx =
+    (cos_raan * cos_argp - sin_raan * sin_argp * cos_i) * vx_orb +
+    (-cos_raan * sin_argp - sin_raan * cos_argp * cos_i) * vy_orb
+  const vy =
+    (sin_raan * cos_argp + cos_raan * sin_argp * cos_i) * vx_orb +
+    (-sin_raan * sin_argp + cos_raan * cos_argp * cos_i) * vy_orb
+  const vz = sin_argp * sin_i * vx_orb + cos_argp * sin_i * vy_orb
+
+  return { x, y, z, vx, vy, vz }
 }
 
 /**
@@ -208,7 +217,19 @@ export function sgp4GetElements(
   if (wasmModule) {
     try {
       const result = wasmModule.sgp4_get_elements(handle, jd)
-      if (result) return result
+      if (result) {
+        // Defensive: normalize angles to radians
+        // WASM may return degrees; if value > 2*PI, assume degrees
+        const normalizeAngle = (v: number) => v > 2 * Math.PI ? v * DEG_TO_RAD : v
+        return {
+          a: result.a,
+          e: result.e,
+          i: normalizeAngle(result.i),
+          raan: normalizeAngle(result.raan),
+          argp: normalizeAngle(result.argp),
+          ta: normalizeAngle(result.ta),
+        }
+      }
     } catch (e) {
       console.warn('WASM sgp4_get_elements failed, trying TS fallback:', e)
     }

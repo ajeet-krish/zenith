@@ -14,7 +14,7 @@ export function CoveragePanel() {
     setGenerating(true)
     const states = generateWalker(
       {
-        inclinationDeg: (walkerConfig.inclinationRad * 180) / Math.PI,
+        inclinationDeg: walkerConfig.inclinationDeg,
         totalSats: walkerConfig.totalSats,
         numPlanes: walkerConfig.numPlanes,
         phasingFactor: walkerConfig.phasingFactor,
@@ -67,10 +67,10 @@ export function CoveragePanel() {
             min={0}
             max={180}
             step={0.1}
-            value={(walkerConfig.inclinationRad * 180 / Math.PI).toFixed(1)}
+            value={walkerConfig.inclinationDeg.toFixed(1)}
             onChange={(e) =>
               setWalkerConfig({
-                inclinationRad: (parseFloat(e.target.value) || 51.6) * Math.PI / 180,
+                inclinationDeg: parseFloat(e.target.value) || 51.6,
               })
             }
             className="input-field w-full"

@@ -124,7 +124,7 @@ export const useAnalysisStore = create<AnalysisState>((set, get) => ({
 
   // Coverage
   walkerConfig: {
-    inclinationRad: (51.6 * Math.PI) / 180,
+    inclinationDeg: 51.6,
     totalSats: 24,
     numPlanes: 6,
     phasingFactor: 1,
