@@ -14,6 +14,7 @@
 //   sgp4_clear()                      -> void
 // =============================================================================
 
+#include <algorithm>
 #include <emscripten/bind.h>
 #include <emscripten/val.h>
 #include <map>
@@ -225,6 +226,10 @@ val mc_propagate_js(double px, double py, double pz,
                     int n_samples, double end_time_days,
                     double pos_stddev, double vel_stddev,
                     uint64_t seed) {
+    // Clamp to prevent unbounded memory allocation
+    constexpr int MAX_SAMPLES = 10000;
+    n_samples = std::clamp(n_samples, 1, MAX_SAMPLES);
+
     orbit::MonteCarloConfig config;
     config.n_samples = n_samples;
     config.end_time_days = end_time_days;

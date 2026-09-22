@@ -1,6 +1,21 @@
 import { useMissionStore } from '@/store/useMissionStore';
 import type { Satellite } from '@/store/useMissionStore';
 
+// =============================================================================
+// Validation Constants
+// =============================================================================
+
+const VALID_CATEGORIES = ['LEO', 'MEO', 'GEO', 'HEO', 'DEBRIS'] as const
+const VALID_METHODS = ['sgp4', 'kepler', 'rk45'] as const
+
+function isValidCategory(c: string): boolean {
+  return (VALID_CATEGORIES as readonly string[]).includes(c)
+}
+
+function isValidMethod(m: string): boolean {
+  return (VALID_METHODS as readonly string[]).includes(m)
+}
+
 interface MissionData {
   version: 1;
   satellites: Array<{
@@ -63,47 +78,66 @@ export function importMission(
   json: string
 ): { success: boolean; error?: string } {
   try {
-    const data = JSON.parse(json) as MissionData;
+    const data = JSON.parse(json) as Record<string, unknown>
 
+    // Structural validation
+    if (!data || typeof data !== 'object') {
+      return { success: false, error: 'Invalid mission file format' }
+    }
     if (data.version !== 1) {
-      return { success: false, error: 'Unsupported mission file version' };
+      return { success: false, error: 'Unsupported mission file version' }
+    }
+    if (!Array.isArray(data.satellites)) {
+      return { success: false, error: 'Missing or invalid satellites array' }
     }
 
-    // Clear existing satellites by re-querying state after each removal
-    let current = useMissionStore.getState();
-    while (current.satellites.length > 0) {
-      const firstSat = current.satellites[0];
-      if (!firstSat) break;
-      useMissionStore.getState().removeSatellite(firstSat.id);
-      current = useMissionStore.getState();
+    // Validate settings
+    if (typeof data.timeSpeed !== 'number' || data.timeSpeed < 0.1 || data.timeSpeed > 100) {
+      return { success: false, error: 'Invalid time speed value' }
+    }
+    if (typeof data.propagationMethod !== 'string' || !isValidMethod(data.propagationMethod)) {
+      return { success: false, error: 'Invalid propagation method' }
     }
 
-    // Add imported satellites
+    const store = useMissionStore.getState()
+
+    // Clear existing satellites
+    while (store.satellites.length > 0) {
+      const current = useMissionStore.getState()
+      if (current.satellites.length === 0) break
+      current.removeSatellite(current.satellites[0]!.id)
+    }
+
+    // Validate and add imported satellites
     for (const sat of data.satellites) {
+      if (!sat || typeof sat !== 'object') continue
+      const s = sat as Record<string, unknown>
+      if (typeof s.name !== 'string' || typeof s.line1 !== 'string' || typeof s.line2 !== 'string') continue
+      if (typeof s.noradId !== 'number') continue
+      if (typeof s.category !== 'string' || !isValidCategory(s.category)) continue
+
       useMissionStore.getState().addSatellite({
-        name: sat.name,
-        noradId: sat.noradId,
-        line1: sat.line1,
-        line2: sat.line2,
-        category: sat.category as Satellite['category'],
-        color: sat.color,
-        visible: sat.visible,
-      });
+        name: s.name as string,
+        noradId: s.noradId as number,
+        line1: s.line1 as string,
+        line2: s.line2 as string,
+        category: s.category as Satellite['category'],
+        color: typeof s.color === 'string' ? (s.color as string) : '#8be9fd',
+        visible: s.visible !== false,
+      })
     }
 
     // Restore settings
-    useMissionStore.getState().setTimeSpeed(data.timeSpeed);
+    useMissionStore.getState().setTimeSpeed(data.timeSpeed as number)
     useMissionStore
       .getState()
-      .setPropagationMethod(
-        data.propagationMethod as 'sgp4' | 'kepler' | 'rk45'
-      );
+      .setPropagationMethod(data.propagationMethod as 'sgp4' | 'kepler' | 'rk45')
 
-    return { success: true };
+    return { success: true }
   } catch (e) {
     return {
       success: false,
       error: `Failed to parse mission file: ${String(e)}`,
-    };
+    }
   }
 }

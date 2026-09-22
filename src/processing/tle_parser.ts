@@ -185,7 +185,7 @@ export function parse_tle(
   const mean_motion = parseFloat(l2.substring(52, 63))
   const revolution_number = parseInt(l2.substring(63, 68).trim(), 10)
 
-  return {
+  const result: TLEElements = {
     satellite_number: sat_num_1,
     classification,
     intl_designator,
@@ -203,6 +203,31 @@ export function parse_tle(
     mean_anomaly,
     mean_motion,
     revolution_number,
+  }
+
+  // Validate physical plausibility
+  validate_tle_semantics(result)
+
+  return result
+}
+
+// ---------------------------------------------------------------------------
+//  Semantic Validation
+// ---------------------------------------------------------------------------
+
+/**
+ * Validate that parsed TLE values are physically plausible.
+ * Rejects impossible orbital elements that would produce NaN/Infinity.
+ */
+function validate_tle_semantics(tle: TLEElements): void {
+  if (tle.mean_motion < 0) {
+    throw new Error(`Invalid mean motion: ${tle.mean_motion} rev/day (must be positive)`)
+  }
+  if (tle.eccentricity < 0 || tle.eccentricity >= 1) {
+    throw new Error(`Invalid eccentricity: ${tle.eccentricity} (must be in [0, 1))`)
+  }
+  if (tle.inclination < 0 || tle.inclination > 180) {
+    throw new Error(`Invalid inclination: ${tle.inclination} deg (must be in [0, 180])`)
   }
 }
 
