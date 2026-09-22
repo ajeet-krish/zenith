@@ -1,6 +1,9 @@
 import { useAnalysisStore } from '@/store/useAnalysisStore';
 import { ManeuverPanel } from './ManeuverPanel';
 import { GroundTrackPanel } from './GroundTrackPanel';
+import { ConjunctionPanel } from './ConjunctionPanel';
+import { MonteCarloPanel } from './MonteCarloPanel';
+import { CoveragePanel } from './CoveragePanel';
 import type { AnalysisTool } from '@/orbit/types';
 
 const TOOLS: { id: AnalysisTool; label: string }[] = [
@@ -38,21 +41,9 @@ export function AnalysisPanel() {
       <div className="flex-1 overflow-y-auto p-3">
         {activeTool === 'maneuver' && <ManeuverPanel />}
         {activeTool === 'groundtrack' && <GroundTrackPanel />}
-        {activeTool === 'conjunction' && (
-          <div className="text-[11px] font-mono text-comment">
-            Coming in Phase 2.4
-          </div>
-        )}
-        {activeTool === 'montecarlo' && (
-          <div className="text-[11px] font-mono text-comment">
-            Coming in Phase 2.5
-          </div>
-        )}
-        {activeTool === 'coverage' && (
-          <div className="text-[11px] font-mono text-comment">
-            Coming in Phase 2.6
-          </div>
-        )}
+        {activeTool === 'conjunction' && <ConjunctionPanel />}
+        {activeTool === 'montecarlo' && <MonteCarloPanel />}
+        {activeTool === 'coverage' && <CoveragePanel />}
         {!activeTool && (
           <div className="text-[11px] font-mono text-comment text-center py-8">
             Select an analysis tool above
