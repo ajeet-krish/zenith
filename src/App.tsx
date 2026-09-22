@@ -6,6 +6,7 @@ import { SatelliteList } from '@/components/ui/SatelliteList';
 import { TLEInput } from '@/components/ui/TLEInput';
 import { PropagationPanel } from '@/components/ui/PropagationPanel';
 import { SatelliteInfo } from '@/components/ui/SatelliteInfo';
+import { AnalysisPanel } from '@/components/analysis/AnalysisPanel';
 import { Starfield } from '@/components/ui/Starfield';
 import { useMissionStore } from '@/store/useMissionStore';
 
@@ -102,6 +103,9 @@ function App() {
             </div>
           )}
         </main>
+
+        {/* Right sidebar: Analysis Panel */}
+        <AnalysisPanel />
       </div>
 
       {/* TLE Input Modal */}

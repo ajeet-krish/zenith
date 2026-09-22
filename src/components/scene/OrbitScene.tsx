@@ -5,6 +5,8 @@ import { Earth } from './Earth';
 import { OrbitPath } from './OrbitPath';
 import { SatelliteMarker } from './SatelliteMarker';
 import { CameraController } from './CameraController';
+import { GroundTrackLine } from './GroundTrackLine';
+import { TransferOrbitPath } from './TransferOrbitPath';
 import { useMissionStore } from '@/store/useMissionStore';
 import { computeOrbitTrail } from '@/utils/orbitTrail';
 
@@ -97,6 +99,10 @@ export function OrbitScene() {
               </group>
             );
           })}
+
+        {/* Analysis overlays */}
+        <GroundTrackLine />
+        <TransferOrbitPath />
 
         {/* Camera controls */}
         <CameraController />
