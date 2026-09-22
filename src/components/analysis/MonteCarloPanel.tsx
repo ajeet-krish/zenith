@@ -77,12 +77,17 @@ export function MonteCarloPanel() {
         <input
           type="number"
           min={100}
-          max={10000}
+          max={5000}
           step={100}
           value={nSamples}
-          onChange={(e) => setNSamples(parseInt(e.target.value) || 1000)}
+          onChange={(e) => setNSamples(Math.min(5000, Math.max(100, parseInt(e.target.value) || 1000)))}
           className="input-field w-full"
         />
+        {nSamples > 2000 && (
+          <div className="text-[9px] font-mono text-neon-orange mt-1">
+            Large sample counts may briefly freeze the UI
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-2 gap-2">

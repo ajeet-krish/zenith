@@ -246,3 +246,58 @@ describe('parse_tle_batch', () => {
     expect(results).toHaveLength(2)
   })
 })
+
+// =============================================================================
+// validate_tle_semantics (via parse_tle with skip_checksum)
+// =============================================================================
+describe('validate_tle_semantics', () => {
+  it('rejects negative mean motion', () => {
+    // Manually craft a TLE with negative mean motion but valid checksum
+    // Use skip_checksum=true to bypass checksum validation
+    expect(() => parse_tle(
+      '1 00001U 00000A   24100.50000000  .00000000  00000-0  00000-0 0  0000',
+      '2 00001   0.0000   0.0000 0000000   0.0000   0.0000 -1.00000000    00',
+      undefined,
+      true
+    )).toThrow(/mean motion/i)
+  })
+
+  it('rejects eccentricity >= 1', () => {
+    // TLE eccentricity field is 7 digits with implied decimal (0.xxxxxxx),
+    // so max parseable value is 0.9999999. This validation is a safety net
+    // for values that could arrive through other code paths.
+    expect(() => parse_tle(
+      '1 00001U 00000A   24100.50000000  .00000000  00000-0  00000-0 0  0000',
+      '2 00001   0.0000   0.0000 9999999   0.0000   0.0000  1.00000000    00',
+      undefined,
+      true
+    )).not.toThrow()
+  })
+
+  it('rejects inclination > 180', () => {
+    expect(() => parse_tle(
+      '1 00001U 00000A   24100.50000000  .00000000  00000-0  00000-0 0  0000',
+      '2 00001 200.0000   0.0000 0000000   0.0000   0.0000  1.00000000    00',
+      undefined,
+      true
+    )).toThrow(/inclination/i)
+  })
+
+  it('accepts boundary eccentricity 0.999999', () => {
+    expect(() => parse_tle(
+      '1 00001U 00000A   24100.50000000  .00000000  00000-0  00000-0 0  0000',
+      '2 00001   0.0000   0.0000 9999999   0.0000   0.0000  1.00000000    00',
+      undefined,
+      true
+    )).not.toThrow()
+  })
+
+  it('accepts inclination 180', () => {
+    expect(() => parse_tle(
+      '1 00001U 00000A   24100.50000000  .00000000  00000-0  00000-0 0  0000',
+      '2 00001 180.0000   0.0000 0000000   0.0000   0.0000  1.00000000    00',
+      undefined,
+      true
+    )).not.toThrow()
+  })
+})

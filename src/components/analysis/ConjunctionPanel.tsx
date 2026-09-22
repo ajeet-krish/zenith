@@ -34,39 +34,42 @@ export function ConjunctionPanel() {
     if (satellites.length < 2) return
     setScreening(true)
 
-    const found: ConjunctionEvent[] = []
-    const visibleSats = satellites.filter((s) => s.visible && s.handle != null)
+    // Yield to React so "Screening..." renders before blocking computation
+    requestAnimationFrame(() => {
+      const found: ConjunctionEvent[] = []
+      const visibleSats = satellites.filter((s) => s.visible && s.handle != null)
 
-    for (let i = 0; i < visibleSats.length; i++) {
-      for (let j = i + 1; j < visibleSats.length; j++) {
-        const s1 = visibleSats[i]!
-        const s2 = visibleSats[j]!
+      for (let i = 0; i < visibleSats.length; i++) {
+        for (let j = i + 1; j < visibleSats.length; j++) {
+          const s1 = visibleSats[i]!
+          const s2 = visibleSats[j]!
 
-        // Compare positions at current epoch
-        const p1 = sgp4Propagate(s1.handle!, currentEpoch)
-        const p2 = sgp4Propagate(s2.handle!, currentEpoch)
-        if (!p1 || !p2) continue
+          // Compare positions at current epoch
+          const p1 = sgp4Propagate(s1.handle!, currentEpoch)
+          const p2 = sgp4Propagate(s2.handle!, currentEpoch)
+          if (!p1 || !p2) continue
 
-        const dx = p1.x - p2.x
-        const dy = p1.y - p2.y
-        const dz = p1.z - p2.z
-        const missKm = Math.sqrt(dx * dx + dy * dy + dz * dz)
+          const dx = p1.x - p2.x
+          const dy = p1.y - p2.y
+          const dz = p1.z - p2.z
+          const missKm = Math.sqrt(dx * dx + dy * dy + dz * dz)
 
-        if (missKm < threshold) {
-          found.push({
-            sat1Name: s1.name,
-            sat2Name: s2.name,
-            missDistanceKm: missKm,
-            riskLevel: getRiskLevel(missKm),
-          })
+          if (missKm < threshold) {
+            found.push({
+              sat1Name: s1.name,
+              sat2Name: s2.name,
+              missDistanceKm: missKm,
+              riskLevel: getRiskLevel(missKm),
+            })
+          }
         }
       }
-    }
 
-    // Sort by miss distance
-    found.sort((a, b) => a.missDistanceKm - b.missDistanceKm)
-    setEvents(found)
-    setScreening(false)
+      // Sort by miss distance
+      found.sort((a, b) => a.missDistanceKm - b.missDistanceKm)
+      setEvents(found)
+      setScreening(false)
+    })
   }, [satellites, currentEpoch, threshold])
 
   return (
