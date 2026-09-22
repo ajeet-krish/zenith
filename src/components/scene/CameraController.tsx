@@ -11,21 +11,24 @@ const FLY_SPEED = 2.0;
 /**
  * CameraController - wraps drei OrbitControls with fly-to animation.
  *
- * When a satellite is selected, smoothly animates the camera toward it.
- * Provides orbit, pan, and zoom controls with damping.
+ * When a satellite is selected, smoothly animates the camera toward it ONCE.
+ * After the fly-to completes, full orbit controls are restored.
  */
 export function CameraController() {
   const controlsRef = useRef<OrbitControlsImpl>(null);
   const flyTarget = useRef<Vector3 | null>(null);
   const lookTargetRef = useRef<Vector3 | null>(null);
   const flyActive = useRef(false);
+  const lastSelectedId = useRef<string | null>(null);
 
   const { camera } = useThree();
   const selectedId = useMissionStore((s) => s.selectedSatelliteId);
-  const satellites = useMissionStore((s) => s.satellites);
 
-  // When selection changes, set fly target
+  // When selection changes, set fly target (ONLY on selection change, not on every frame)
   useEffect(() => {
+    if (selectedId === lastSelectedId.current) return;
+    lastSelectedId.current = selectedId;
+
     if (!selectedId) {
       flyActive.current = false;
       flyTarget.current = null;
@@ -33,6 +36,7 @@ export function CameraController() {
       return;
     }
 
+    const satellites = useMissionStore.getState().satellites;
     const sat = satellites.find((s) => s.id === selectedId);
     if (!sat || !sat.handle) return;
 
@@ -45,7 +49,7 @@ export function CameraController() {
     flyTarget.current = offset;
     lookTargetRef.current = pos.clone();
     flyActive.current = true;
-  }, [selectedId, satellites]);
+  }, [selectedId]);
 
   // Smoothly animate camera toward fly target
   useFrame((_, delta) => {
@@ -58,8 +62,10 @@ export function CameraController() {
     const dist = dir.length();
 
     if (dist < 0.3) {
+      // Fly-to complete: release camera control
       flyActive.current = false;
       flyTarget.current = null;
+      lookTargetRef.current = null;
       return;
     }
 
@@ -67,9 +73,9 @@ export function CameraController() {
     const step = Math.min(FLY_SPEED * delta * 60, dist * 0.05);
     camera.position.addScaledVector(dir, step);
 
-    if (controlsRef.current) {
-      const lookTarget = lookTargetRef.current ?? new Vector3();
-      controlsRef.current.target.lerp(lookTarget, 0.02);
+    // Also move the orbit controls target during fly-to
+    if (controlsRef.current && lookTargetRef.current) {
+      controlsRef.current.target.lerp(lookTargetRef.current, 0.05);
       controlsRef.current.update();
     }
   });

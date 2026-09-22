@@ -3,7 +3,7 @@
  * Mirrors the wasmLoader.ts pattern.
  */
 
-import { MU_EARTH, R_EARTH, DEG_TO_RAD } from './constants'
+import { MU_EARTH, R_EARTH, DEG_TO_RAD, JD_J2000 } from './constants'
 
 // Module-level state
 let wasmModule: any = null
@@ -129,9 +129,51 @@ export interface GroundTrackPoint {
 }
 
 /**
- * Compute ground track from trajectory data. WASM only.
+ * TypeScript fallback for ground track computation.
+ * Converts ECI (TEME) positions to geodetic lat/lon using simple spherical Earth.
+ */
+function computeGroundTrackTS(flatTrajectory: number[]): GroundTrackPoint[] {
+  const points: GroundTrackPoint[] = []
+  const R_EARTH_KM = 6378.137
+
+  for (let i = 0; i < flatTrajectory.length; i += 7) {
+    const x = flatTrajectory[i]!
+    const y = flatTrajectory[i + 1]!
+    const z = flatTrajectory[i + 2]!
+    const jd = flatTrajectory[i + 6]!
+
+    // Compute longitude rotation (TEME to ECEF approximate)
+    const t_ut1_days = jd - JD_J2000
+    const gmst = ((280.46061837 + 360.98564736629 * t_ut1_days) % 360) * Math.PI / 180
+
+    // Latitude from z and radius
+    const r = Math.sqrt(x * x + y * y + z * z)
+    const lat = Math.asin(z / r)
+
+    // Longitude from x, y with GMST rotation
+    const lon = Math.atan2(y, x) - gmst
+
+    // Normalize longitude to [-PI, PI]
+    const lonNorm = ((lon % (2 * Math.PI)) + 3 * Math.PI) % (2 * Math.PI) - Math.PI
+
+    const alt = r - R_EARTH_KM
+
+    points.push({
+      lat,
+      lon: lonNorm,
+      alt,
+      jd,
+    })
+  }
+
+  return points
+}
+
+/**
+ * Compute ground track from trajectory data. Tries WASM first, falls back to TS.
  */
 export function computeGroundTrack(flatTrajectory: number[]): GroundTrackPoint[] | null {
+  // Try WASM first
   if (wasmModule) {
     try {
       const flat = wasmModule.compute_ground_track(flatTrajectory)
@@ -146,10 +188,12 @@ export function computeGroundTrack(flatTrajectory: number[]): GroundTrackPoint[]
       }
       return points
     } catch (e) {
-      console.warn('WASM compute_ground_track failed:', e)
+      console.warn('WASM compute_ground_track failed, using TS fallback:', e)
     }
   }
-  return null
+
+  // TS fallback
+  return computeGroundTrackTS(flatTrajectory)
 }
 
 // =============================================================================
@@ -214,12 +258,69 @@ export interface WalkerState {
 }
 
 /**
- * Generate Walker Delta constellation. WASM only.
+ * TypeScript fallback for Walker Delta constellation generation.
+ * Generates evenly distributed satellites in circular orbits.
+ */
+function generateWalkerTS(config: WalkerDeltaConfig, jdEpoch: number): WalkerState[] {
+  const R_EARTH = 6378.137
+  const MU_EARTH = 398600.4418
+
+  const a = R_EARTH + config.altitudeKm
+  const inc = config.inclinationDeg * Math.PI / 180
+
+  const states: WalkerState[] = []
+  const satsPerPlane = Math.floor(config.totalSats / config.numPlanes)
+  const deltaRaann = (2 * Math.PI) / config.numPlanes
+  const deltaMA = (2 * Math.PI * config.phasingFactor) / config.totalSats
+
+  for (let p = 0; p < config.numPlanes; p++) {
+    const raan = p * deltaRaann
+
+    for (let j = 0; j < satsPerPlane; j++) {
+      const ma = (2 * Math.PI * j) / satsPerPlane + p * deltaMA
+
+      // Convert Keplerian elements to ECI state for circular orbit
+      const cosInc = Math.cos(inc)
+      const sinInc = Math.sin(inc)
+      const cosRaan = Math.cos(raan)
+      const sinRaan = Math.sin(raan)
+      const cosMa = Math.cos(ma)
+      const sinMa = Math.sin(ma)
+
+      // Position in orbital plane
+      const xOrb = a * cosMa
+      const yOrb = a * sinMa
+
+      // Rotate to ECI
+      const x = cosRaan * xOrb - sinRaan * cosInc * yOrb
+      const y = sinRaan * xOrb + cosRaan * cosInc * yOrb
+      const z = sinInc * yOrb
+
+      // Velocity in orbital plane (circular orbit)
+      const v = Math.sqrt(MU_EARTH / a)
+      const vxOrb = -v * sinMa
+      const vyOrb = v * cosMa
+
+      // Rotate velocity to ECI
+      const vx = cosRaan * vxOrb - sinRaan * cosInc * vyOrb
+      const vy = sinRaan * vxOrb + cosRaan * cosInc * vyOrb
+      const vz = sinInc * vyOrb
+
+      states.push({ x, y, z, vx, vy, vz, jd: jdEpoch })
+    }
+  }
+
+  return states
+}
+
+/**
+ * Generate Walker Delta constellation. Tries WASM first, falls back to TS.
  */
 export function generateWalker(
   config: WalkerDeltaConfig,
   jdEpoch: number
 ): WalkerState[] | null {
+  // Try WASM first
   if (wasmModule) {
     try {
       return wasmModule.generate_walker(
@@ -231,8 +332,10 @@ export function generateWalker(
         jdEpoch
       )
     } catch (e) {
-      console.warn('WASM generate_walker failed:', e)
+      console.warn('WASM generate_walker failed, using TS fallback:', e)
     }
   }
-  return null
+
+  // TS fallback
+  return generateWalkerTS(config, jdEpoch)
 }

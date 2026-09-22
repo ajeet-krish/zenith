@@ -9,7 +9,7 @@ import { getSatellitePosition } from '@/utils/orbitTrail';
 /**
  * SatelliteMarker - renders all satellite markers in the scene.
  *
- * Each satellite is a small glowing sphere with a label.
+ * Each satellite is a small glowing cubesat with a label.
  * Positions update every frame from WASM/TS propagation.
  * Clicking a marker selects that satellite.
  */
@@ -50,10 +50,10 @@ export function SatelliteMarker({
         selectSatellite(isSelected ? null : satelliteId);
       }}
     >
-      {/* Satellite dot */}
-      <mesh scale={scale}>
-        <sphereGeometry args={[markerSize, 12, 12]} />
-        <meshBasicMaterial color={color} />
+      {/* Satellite cubesat */}
+      <mesh scale={scale} rotation={[0.3, 0.5, 0]}>
+        <boxGeometry args={[markerSize * 1.5, markerSize * 1.5, markerSize * 1.5]} />
+        <meshBasicMaterial color={color} wireframe={false} />
       </mesh>
 
       {/* Glow ring when selected */}

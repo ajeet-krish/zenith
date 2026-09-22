@@ -92,6 +92,13 @@ export function PropagationPanel() {
           </div>
         </div>
 
+        {/* WASM notice */}
+        {!wasmReady && (
+          <div className="text-[9px] font-mono text-neon-orange/70 bg-neon-orange/5 px-2 py-1 rounded">
+            Force models and RK45 require WASM. Using Kepler fallback.
+          </div>
+        )}
+
         {/* Epoch display */}
         <div className="flex items-center justify-between pt-1 border-t border-dust">
           <span className="text-[9px] font-mono text-comment">Epoch JD</span>
