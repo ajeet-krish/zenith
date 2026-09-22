@@ -14,6 +14,7 @@ interface TSBucket {
   epoch_jd: number
 }
 const ts_propagators: Map<number, TSBucket> = new Map()
+const wasm_to_ts_handle: Map<number, number> = new Map()
 let next_handle = 1
 
 const DEG_TO_RAD = Math.PI / 180
@@ -129,16 +130,8 @@ function sgp4_propagate_ts(
  * Tries WASM first, falls back to TS Keplerian propagation.
  */
 export function sgp4Init(line1: string, line2: string): number | null {
-  // Try WASM first
-  if (wasmModule) {
-    try {
-      return wasmModule.sgp4_init(line1, line2) as number
-    } catch (e) {
-      console.warn('WASM sgp4_init failed, trying TS fallback:', e)
-    }
-  }
-
-  // TS fallback: parse TLE and store for simplified propagation
+  // Parse TLE for TS fallback storage (always needed as backup)
+  let tsHandle: number | null = null
   try {
     const tle = parse_tle(line1, line2, undefined, true)
     const handle = next_handle++
@@ -151,11 +144,31 @@ export function sgp4Init(line1: string, line2: string): number | null {
       meanAnomaly: tle.mean_anomaly,
       epoch_jd: tle.epoch_jd,
     })
-    return handle
+    tsHandle = handle
   } catch (e) {
-    console.warn('TS sgp4_init failed:', e)
-    return null
+    console.warn('TLE parse failed:', e)
   }
+
+  // Try WASM first
+  if (wasmModule) {
+    try {
+      const wasmHandle = wasmModule.sgp4_init(line1, line2) as number
+      // WASM handle 0 means error
+      if (wasmHandle !== 0) {
+        // Store mapping so TS fallback can be used if WASM fails later
+        if (tsHandle !== null) {
+          wasm_to_ts_handle.set(wasmHandle, tsHandle)
+        }
+        return wasmHandle
+      }
+      console.warn('WASM sgp4_init returned 0 (error), using TS fallback')
+    } catch (e) {
+      console.warn('WASM sgp4_init failed, using TS fallback:', e)
+    }
+  }
+
+  // Return TS fallback handle
+  return tsHandle
 }
 
 /**
@@ -169,14 +182,16 @@ export function sgp4Propagate(
   // Try WASM first
   if (wasmModule) {
     try {
-      return wasmModule.sgp4_propagate(handle, jd)
+      const result = wasmModule.sgp4_propagate(handle, jd)
+      if (result) return result
     } catch (e) {
       console.warn('WASM sgp4_propagate failed, trying TS fallback:', e)
     }
   }
 
-  // TS fallback
-  const bucket = ts_propagators.get(handle)
+  // TS fallback: map WASM handle to TS handle if needed
+  const tsHandle = wasm_to_ts_handle.get(handle) ?? handle
+  const bucket = ts_propagators.get(tsHandle)
   if (!bucket) return null
   return sgp4_propagate_ts(bucket, jd)
 }
@@ -192,14 +207,16 @@ export function sgp4GetElements(
   // Try WASM first
   if (wasmModule) {
     try {
-      return wasmModule.sgp4_get_elements(handle, jd)
+      const result = wasmModule.sgp4_get_elements(handle, jd)
+      if (result) return result
     } catch (e) {
       console.warn('WASM sgp4_get_elements failed, trying TS fallback:', e)
     }
   }
 
-  // TS fallback: return stored elements (converted to radians for WASM consistency)
-  const bucket = ts_propagators.get(handle)
+  // TS fallback: map WASM handle to TS handle if needed
+  const tsHandle = wasm_to_ts_handle.get(handle) ?? handle
+  const bucket = ts_propagators.get(tsHandle)
   if (!bucket) return null
   return {
     a: Math.pow(MU_EARTH / (bucket.meanMotion * (2 * Math.PI) / 86400) ** 2, 1 / 3),
@@ -241,4 +258,5 @@ export function sgp4Clear(): void {
     }
   }
   ts_propagators.clear()
+  wasm_to_ts_handle.clear()
 }
