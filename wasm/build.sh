@@ -44,11 +44,14 @@ $PYTHON "$EMSCRIPTEN_DIR/emcmake.py" cmake -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j$(sysctl -n hw.ncpu 2>/dev/null || nproc 2>/dev/null || echo 4)
 
 # Copy output to public directory
+# Emscripten names output <target>.js and <target>.wasm, but we need:
+#   zenith.js        (JS glue, loaded via <script> tag)
+#   zenith.wasm.wasm (WASM binary, loaded by JS glue)
 mkdir -p ../public/wasm
-cp build/zenith.wasm ../public/wasm/
-cp build/zenith.js ../public/wasm/
+cp build/zenith.wasm.js ../public/wasm/zenith.js
+cp build/zenith.wasm.wasm ../public/wasm/zenith.wasm.wasm
 
 echo ""
 echo "WASM build complete!"
-echo "Output: ../public/wasm/zenith.wasm"
 echo "Output: ../public/wasm/zenith.js"
+echo "Output: ../public/wasm/zenith.wasm.wasm"

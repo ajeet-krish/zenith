@@ -5,7 +5,9 @@ docs/
 *.log
 build/
 wasm/build/
-public/wasm/
+public/wasm/*
+!public/wasm/zenith.js
+!public/wasm/zenith.wasm.wasm
 
 # Python
 __pycache__/
