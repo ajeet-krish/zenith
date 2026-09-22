@@ -55,3 +55,13 @@ wasm/              # C++ to WASM build
 - Multiple satellite tracking
 - Conjunction assessment
 - Ground track computation
+
+## Analysis Tools (Phase 2)
+
+- **Hohmann Transfer Planning**: Compute delta-V budgets for orbital maneuvers with 3D transfer orbit visualization
+- **Ground Track Rendering**: Sub-satellite ground tracks on the 3D Earth with anti-meridian handling
+- **Conjunction Assessment**: Pairwise close-approach screening with risk level indicators (CRITICAL/HIGH/MODERATE/LOW)
+- **Monte Carlo Uncertainty**: Gaussian initial condition propagation with scatter cloud and 3-sigma ellipsoid visualization
+- **Constellation Coverage**: Walker Delta constellation designer with coverage analysis
+- **Keyboard Shortcuts**: Space (play/pause), R (reset), +/- (speed), Delete (remove satellite)
+- **Mission Export/Import**: Save and restore mission configurations as JSON

@@ -9,12 +9,16 @@ import { SatelliteInfo } from '@/components/ui/SatelliteInfo';
 import { AnalysisPanel } from '@/components/analysis/AnalysisPanel';
 import { Starfield } from '@/components/ui/Starfield';
 import { useMissionStore } from '@/store/useMissionStore';
+import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
+import { downloadMission } from '@/utils/missionExport';
 
 function App() {
   const [loading, setLoading] = useState(true);
   const [showTleInput, setShowTleInput] = useState(false);
   const selectedSatelliteId = useMissionStore((s) => s.selectedSatelliteId);
   const wasmReady = useMissionStore((s) => s.wasmReady);
+
+  useKeyboardShortcuts();
 
   useEffect(() => {
     initWasm().then((ok) => {
@@ -38,6 +42,12 @@ function App() {
           <span className="text-xs text-comment font-mono">v0.1.0</span>
         </div>
         <div className="flex items-center gap-3">
+          <button
+            onClick={downloadMission}
+            className="text-[10px] font-mono px-2 py-0.5 bg-white/5 text-comment hover:text-space-50 hover:bg-white/10 transition-colors"
+          >
+            Export
+          </button>
           <span
             className={`text-[10px] font-mono px-2 py-0.5 ${
               wasmReady
