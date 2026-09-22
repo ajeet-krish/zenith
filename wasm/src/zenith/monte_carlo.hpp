@@ -12,8 +12,8 @@
 #include <optional>
 #include <vector>
 
-#include "core/orbit_types.hpp"
-#include "core/kepler.hpp"
+#include "orbit_types.hpp"
+#include "kepler.hpp"
 
 namespace orbit {
 

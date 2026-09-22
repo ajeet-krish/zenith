@@ -10,9 +10,9 @@
 #include <cmath>
 #include <utility>
 
-#include "../core/orbit_types.hpp"
-#include "../core/kepler.hpp"
-#include "../core/coordinate_frames.hpp"
+#include "orbit_types.hpp"
+#include "kepler.hpp"
+#include "coordinate_frames.hpp"
 
 namespace orbit {
 

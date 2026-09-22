@@ -38,6 +38,9 @@ export async function initWasm(): Promise<boolean> {
     const factory = (globalThis as any).ZenithWasm
     if (typeof factory === 'function') {
       wasmModule = await factory()
+      // Wire up analysis module
+      const { setWasmModule } = await import('./analysisLoader')
+      setWasmModule(wasmModule)
       return true
     }
     console.warn('WASM factory not found on globalThis')

@@ -26,6 +26,10 @@
 #include "zenith/sgp4_parser.hpp"
 #include "zenith/sgp4_propagator.hpp"
 #include "zenith/maneuver.hpp"
+#include "zenith/force_models.hpp"
+#include "zenith/ground_track.hpp"
+#include "zenith/monte_carlo.hpp"
+#include "zenith/coverage.hpp"
 
 using namespace emscripten;
 
@@ -141,6 +145,172 @@ val lambert_solve_js(double r1x, double r1y, double r1z,
 }
 
 // =============================================================================
+// Maneuver Planning
+// =============================================================================
+
+/// Compute Hohmann transfer from altitudes above Earth.
+val hohmann_from_altitudes_js(double alt1_km, double alt2_km) {
+    orbit::HohmannResult hr = orbit::hohmann_from_altitudes(alt1_km, alt2_km);
+    
+    val result = val::object();
+    result.set("dv1", hr.dv1);
+    result.set("dv2", hr.dv2);
+    result.set("dv_total", hr.dv_total);
+    result.set("transfer_time_s", hr.transfer_time_s);
+    result.set("a_transfer", hr.a_transfer);
+    return result;
+}
+
+/// Compute bi-elliptic transfer.
+val bielliptic_transfer_js(double r1_km, double r2_km, double r_intermediate_km) {
+    orbit::HohmannResult hr = orbit::bielliptic_transfer(r1_km, r2_km, r_intermediate_km);
+    
+    val result = val::object();
+    result.set("dv1", hr.dv1);
+    result.set("dv2", hr.dv2);
+    result.set("dv_total", hr.dv_total);
+    result.set("transfer_time_s", hr.transfer_time_s);
+    result.set("a_transfer", hr.a_transfer);
+    return result;
+}
+
+// =============================================================================
+// Ground Track
+// =============================================================================
+
+/// Compute ground track from flat trajectory array.
+/// Input: flat array [x1,y1,z1,jd1, x2,y2,z2,jd2, ...]
+/// Output: flat array [lat1,lon1,alt1, lat2,lon2,alt2, ...]
+val compute_ground_track_js(val flat_trajectory) {
+    // Parse flat array into StateVectors
+    int len = flat_trajectory["length"].as<int>();
+    int n = len / 7; // 7 doubles per state: x,y,z,vx,vy,vz,jd
+    
+    std::vector<orbit::StateVector> trajectory;
+    trajectory.reserve(n);
+    
+    for (int i = 0; i < n; ++i) {
+        orbit::StateVector sv;
+        sv.position.x = flat_trajectory[i * 7 + 0].as<double>();
+        sv.position.y = flat_trajectory[i * 7 + 1].as<double>();
+        sv.position.z = flat_trajectory[i * 7 + 2].as<double>();
+        sv.velocity.x = flat_trajectory[i * 7 + 3].as<double>();
+        sv.velocity.y = flat_trajectory[i * 7 + 4].as<double>();
+        sv.velocity.z = flat_trajectory[i * 7 + 5].as<double>();
+        sv.epoch = flat_trajectory[i * 7 + 6].as<double>();
+        trajectory.push_back(sv);
+    }
+    
+    std::vector<orbit::GroundTrackPoint> track = orbit::compute_ground_track(trajectory);
+    
+    // Return as flat array [lat,lon,alt,jd, ...]
+    val result = val::array();
+    for (const auto& pt : track) {
+        result.call<void>("push", pt.latitude_rad);
+        result.call<void>("push", pt.longitude_rad);
+        result.call<void>("push", pt.altitude_km);
+        result.call<void>("push", pt.jd_utc);
+    }
+    return result;
+}
+
+// =============================================================================
+// Monte Carlo
+// =============================================================================
+
+/// Run Monte Carlo propagation.
+val mc_propagate_js(double px, double py, double pz,
+                    double vx, double vy, double vz,
+                    double epoch_jd,
+                    int n_samples, double end_time_days,
+                    double pos_stddev, double vel_stddev,
+                    uint64_t seed) {
+    orbit::MonteCarloConfig config;
+    config.n_samples = n_samples;
+    config.end_time_days = end_time_days;
+    config.position_stddev_km = pos_stddev;
+    config.velocity_stddev_km_s = vel_stddev;
+    config.seed = seed;
+    
+    orbit::StateVector nominal;
+    nominal.position = orbit::Vec3(px, py, pz);
+    nominal.velocity = orbit::Vec3(vx, vy, vz);
+    nominal.epoch = epoch_jd;
+    
+    orbit::MonteCarloResult mc_result = orbit::monte_carlo_propagate(nominal, config);
+    
+    val result = val::object();
+    
+    // Mean state
+    val mean = val::object();
+    mean.set("x", mc_result.mean_state.position.x);
+    mean.set("y", mc_result.mean_state.position.y);
+    mean.set("z", mc_result.mean_state.position.z);
+    mean.set("vx", mc_result.mean_state.velocity.x);
+    mean.set("vy", mc_result.mean_state.velocity.y);
+    mean.set("vz", mc_result.mean_state.velocity.z);
+    result.set("mean", mean);
+    
+    // Position stddev
+    val pos_std = val::array();
+    for (double s : mc_result.position_stddev) {
+        pos_std.call<void>("push", s);
+    }
+    result.set("positionStddev", pos_std);
+    
+    // Velocity stddev
+    val vel_std = val::array();
+    for (double s : mc_result.velocity_stddev) {
+        vel_std.call<void>("push", s);
+    }
+    result.set("velocityStddev", vel_std);
+    
+    // Samples (only positions for visualization, to keep data size manageable)
+    val samples = val::array();
+    for (const auto& sv : mc_result.samples) {
+        val s = val::object();
+        s.set("x", sv.position.x);
+        s.set("y", sv.position.y);
+        s.set("z", sv.position.z);
+        samples.call<void>("push", s);
+    }
+    result.set("samples", samples);
+    
+    return result;
+}
+
+// =============================================================================
+// Coverage / Walker Constellation
+// =============================================================================
+
+/// Generate Walker Delta constellation states.
+val generate_walker_js(double inc_rad, int total_sats, int num_planes,
+                       int phasing, double alt_km, double jd_epoch) {
+    orbit::WalkerDelta walker;
+    walker.inclination_rad = inc_rad;
+    walker.total_sats = total_sats;
+    walker.num_planes = num_planes;
+    walker.phasing_factor = phasing;
+    walker.altitude_km = alt_km;
+    
+    std::vector<orbit::StateVector> states = orbit::generate_walker(walker, jd_epoch);
+    
+    val result = val::array();
+    for (const auto& sv : states) {
+        val s = val::object();
+        s.set("x", sv.position.x);
+        s.set("y", sv.position.y);
+        s.set("z", sv.position.z);
+        s.set("vx", sv.velocity.x);
+        s.set("vy", sv.velocity.y);
+        s.set("vz", sv.velocity.z);
+        s.set("jd", sv.epoch);
+        result.call<void>("push", s);
+    }
+    return result;
+}
+
+// =============================================================================
 // Embind Registration
 // =============================================================================
 
@@ -150,4 +320,9 @@ EMSCRIPTEN_BINDINGS(zenith) {
     function("sgp4_get_elements", &sgp4_get_elements);
     function("sgp4_clear", &sgp4_clear);
     function("lambert_solve", &lambert_solve_js);
+    function("hohmann_from_altitudes", &hohmann_from_altitudes_js);
+    function("bielliptic_transfer", &bielliptic_transfer_js);
+    function("compute_ground_track", &compute_ground_track_js);
+    function("mc_propagate", &mc_propagate_js);
+    function("generate_walker", &generate_walker_js);
 }

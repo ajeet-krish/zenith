@@ -151,3 +151,68 @@ export interface LambertWasmResult {
   v2z: number
   converged: boolean
 }
+
+// =============================================================================
+// Analysis Types
+// =============================================================================
+
+export interface HohmannResult {
+  dv1: number           // km/s
+  dv2: number           // km/s
+  dvTotal: number       // km/s
+  transferTimeS: number // seconds
+  aTransfer: number     // km
+}
+
+export interface ConjunctionEvent {
+  satId1: number
+  satId2: number
+  tcaJd: number
+  missDistanceKm: number
+  relPosition: { x: number; y: number; z: number }
+}
+
+export interface ConjunctionConfig {
+  screenDistanceKm: number
+  timeStepS: number
+  maxTimeSteps: number
+}
+
+export interface GroundTrackPoint {
+  latitudeRad: number
+  longitudeRad: number
+  altitudeKm: number
+  jdUtc: number
+}
+
+export interface MonteCarloConfig {
+  nSamples: number
+  endTimeDays: number
+  positionStddevKm: number
+  velocityStddevKmS: number
+  seed: number
+}
+
+export interface MonteCarloResult {
+  meanState: StateVector
+  positionStddev: [number, number, number]
+  velocityStddev: [number, number, number]
+  samples: Array<{ x: number; y: number; z: number }>
+}
+
+export interface WalkerDeltaConfig {
+  inclinationRad: number
+  totalSats: number
+  numPlanes: number
+  phasingFactor: number
+  altitudeKm: number
+}
+
+export interface CoverageResult {
+  coverageFraction: number
+  maxGapS: number
+  avgPassDurationS: number
+  totalPasses: number
+}
+
+export type AnalysisTool = 'maneuver' | 'conjunction' | 'groundtrack' | 'montecarlo' | 'coverage'
