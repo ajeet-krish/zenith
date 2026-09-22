@@ -7,10 +7,9 @@ import { useMissionStore } from '@/store/useMissionStore';
 import { getSatellitePosition } from '@/utils/orbitTrail';
 
 /**
- * SatelliteMarker - renders all satellite markers in the scene.
+ * SatelliteMarker - renders a satellite cubesat with label in the scene.
  *
- * Each satellite is a small glowing cubesat with a label.
- * Positions update every frame from WASM/TS propagation.
+ * Position updates every frame from WASM/TS propagation.
  * Clicking a marker selects that satellite.
  */
 export function SatelliteMarker({
@@ -43,17 +42,18 @@ export function SatelliteMarker({
   const markerSize = 0.05;
 
   return (
-    <group
-      ref={groupRef}
-      onClick={(e) => {
-        e.stopPropagation();
-        selectSatellite(isSelected ? null : satelliteId);
-      }}
-    >
+    <group ref={groupRef}>
       {/* Satellite cubesat */}
-      <mesh scale={scale} rotation={[0.3, 0.5, 0]}>
+      <mesh
+        scale={scale}
+        rotation={[0.3, 0.5, 0]}
+        onClick={(e) => {
+          e.stopPropagation();
+          selectSatellite(isSelected ? null : satelliteId);
+        }}
+      >
         <boxGeometry args={[markerSize * 1.5, markerSize * 1.5, markerSize * 1.5]} />
-        <meshBasicMaterial color={color} wireframe={false} />
+        <meshBasicMaterial color={color} />
       </mesh>
 
       {/* Glow ring when selected */}
@@ -69,10 +69,11 @@ export function SatelliteMarker({
         </mesh>
       )}
 
-      {/* Label */}
+      {/* Label - positioned relative to group, which follows satellite */}
       <Html
-        position={[0, markerSize * scale + 0.15, 0]}
+        position={[0, 0.12, 0]}
         center
+        distanceFactor={15}
         style={{
           pointerEvents: 'none',
           userSelect: 'none',

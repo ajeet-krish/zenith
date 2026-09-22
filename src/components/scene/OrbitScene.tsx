@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { Stars } from '@react-three/drei';
 import { Earth } from './Earth';
@@ -22,6 +22,9 @@ export function OrbitScene() {
   const currentEpoch = useMissionStore((s) => s.currentEpoch);
   const loadSampleSatellites = useMissionStore((s) => s.loadSampleSatellites);
 
+  // Keep last valid trails to avoid flickering during playback
+  const lastTrailsRef = useRef<Map<string, ReturnType<typeof computeOrbitTrail>>>(new Map());
+
   // Load sample satellites on mount
   useEffect(() => {
     loadSampleSatellites();
@@ -32,9 +35,16 @@ export function OrbitScene() {
     const trails = new Map<string, ReturnType<typeof computeOrbitTrail>>();
     for (const sat of satellites) {
       if (sat.visible && sat.handle !== null) {
-        trails.set(sat.id, computeOrbitTrail(sat.handle, currentEpoch));
+        const computed = computeOrbitTrail(sat.handle, currentEpoch);
+        if (computed.length > 0) {
+          trails.set(sat.id, computed);
+        } else if (lastTrailsRef.current.has(sat.id)) {
+          // Keep last valid trail if computation fails
+          trails.set(sat.id, lastTrailsRef.current.get(sat.id)!);
+        }
       }
     }
+    lastTrailsRef.current = trails;
     return trails;
   }, [satellites, currentEpoch]);
 

@@ -37,6 +37,11 @@ export function computeOrbitTrail(
   // Orbital period: T = 2*pi * sqrt(a^3 / mu) in seconds
   const periodSec = 2 * Math.PI * Math.sqrt(Math.pow(elements.a, 3) / MU_EARTH);
 
+  // Cap the period to reasonable bounds (10 min to 24 hours)
+  if (periodSec < 600 || periodSec > 86400) {
+    return [];
+  }
+
   const points: Vector3[] = [];
 
   for (let idx = 0; idx <= numPoints; idx++) {
