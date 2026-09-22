@@ -7,6 +7,7 @@ import { SatelliteMarker } from './SatelliteMarker';
 import { CameraController } from './CameraController';
 import { GroundTrackLine } from './GroundTrackLine';
 import { TransferOrbitPath } from './TransferOrbitPath';
+import { ConjunctionMarker } from './ConjunctionMarker';
 import { useMissionStore } from '@/store/useMissionStore';
 import { computeOrbitTrail } from '@/utils/orbitTrail';
 
@@ -113,6 +114,7 @@ export function OrbitScene() {
         {/* Analysis overlays */}
         <GroundTrackLine />
         <TransferOrbitPath />
+        <ConjunctionMarker />
 
         {/* Camera controls */}
         <CameraController />

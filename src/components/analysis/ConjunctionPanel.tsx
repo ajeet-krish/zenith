@@ -1,13 +1,8 @@
 import { useState, useCallback } from 'react'
 import { useMissionStore } from '@/store/useMissionStore'
+import { useAnalysisStore } from '@/store/useAnalysisStore'
 import { sgp4Propagate } from '@/orbit/wasmLoader'
-
-interface ConjunctionEvent {
-  sat1Name: string
-  sat2Name: string
-  missDistanceKm: number
-  riskLevel: 'CRITICAL' | 'HIGH' | 'MODERATE' | 'LOW'
-}
+import type { ConjunctionEvent } from '@/orbit/types'
 
 const RISK_COLORS: Record<string, string> = {
   CRITICAL: 'text-red-500 bg-red-500/10',
@@ -26,7 +21,10 @@ function getRiskLevel(missKm: number): 'CRITICAL' | 'HIGH' | 'MODERATE' | 'LOW' 
 export function ConjunctionPanel() {
   const satellites = useMissionStore((s) => s.satellites)
   const currentEpoch = useMissionStore((s) => s.currentEpoch)
-  const [events, setEvents] = useState<ConjunctionEvent[]>([])
+  const conjunctionEvents = useAnalysisStore((s) => s.conjunctionEvents)
+  const setConjunctionEvents = useAnalysisStore((s) => s.setConjunctionEvents)
+  const showConjunctionMarkers = useAnalysisStore((s) => s.showConjunctionMarkers)
+  const toggleConjunctionMarkers = useAnalysisStore((s) => s.toggleConjunctionMarkers)
   const [screening, setScreening] = useState(false)
   const [threshold, setThreshold] = useState(100)
 
@@ -58,8 +56,12 @@ export function ConjunctionPanel() {
             found.push({
               sat1Name: s1.name,
               sat2Name: s2.name,
+              sat1Id: s1.id,
+              sat2Id: s2.id,
               missDistanceKm: missKm,
               riskLevel: getRiskLevel(missKm),
+              position1: { x: p1.x, y: p1.y, z: p1.z },
+              position2: { x: p2.x, y: p2.y, z: p2.z },
             })
           }
         }
@@ -67,10 +69,10 @@ export function ConjunctionPanel() {
 
       // Sort by miss distance
       found.sort((a, b) => a.missDistanceKm - b.missDistanceKm)
-      setEvents(found)
+      setConjunctionEvents(found)
       setScreening(false)
     })
-  }, [satellites, currentEpoch, threshold])
+  }, [satellites, currentEpoch, threshold, setConjunctionEvents])
 
   return (
     <div className="space-y-3">
@@ -101,13 +103,13 @@ export function ConjunctionPanel() {
         {screening ? 'Screening...' : 'Run Screening'}
       </button>
 
-      {events.length > 0 && (
+      {conjunctionEvents.length > 0 && (
         <div className="space-y-2 border-t border-dust pt-2">
           <div className="text-[10px] font-mono text-comment">
-            {events.length} event{events.length !== 1 ? 's' : ''} found
+            {conjunctionEvents.length} event{conjunctionEvents.length !== 1 ? 's' : ''} found
           </div>
           <div className="space-y-1 max-h-48 overflow-y-auto">
-            {events.map((evt, i) => (
+            {conjunctionEvents.map((evt, i) => (
               <div key={i} className="bg-black/30 p-2 text-[10px] font-mono space-y-1">
                 <div className="flex items-center gap-2">
                   <span className={`px-1 py-0.5 ${RISK_COLORS[evt.riskLevel]}`}>
@@ -120,6 +122,20 @@ export function ConjunctionPanel() {
                 </div>
               </div>
             ))}
+          </div>
+
+          <div className="flex items-center justify-between border-t border-dust pt-2">
+            <span className="text-[10px] font-mono text-comment">3D Markers</span>
+            <button
+              onClick={toggleConjunctionMarkers}
+              className={`px-2 py-0.5 text-[10px] font-mono ${
+                showConjunctionMarkers
+                  ? 'bg-neon-red/20 text-neon-red'
+                  : 'bg-white/5 text-comment'
+              }`}
+            >
+              {showConjunctionMarkers ? 'ON' : 'OFF'}
+            </button>
           </div>
         </div>
       )}

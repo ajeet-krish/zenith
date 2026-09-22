@@ -165,11 +165,14 @@ export interface HohmannResult {
 }
 
 export interface ConjunctionEvent {
-  satId1: number
-  satId2: number
-  tcaJd: number
+  sat1Name: string
+  sat2Name: string
+  sat1Id: string
+  sat2Id: string
   missDistanceKm: number
-  relPosition: { x: number; y: number; z: number }
+  riskLevel: 'CRITICAL' | 'HIGH' | 'MODERATE' | 'LOW'
+  position1: { x: number; y: number; z: number }
+  position2: { x: number; y: number; z: number }
 }
 
 export interface ConjunctionConfig {

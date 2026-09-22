@@ -38,6 +38,9 @@ interface AnalysisState {
   conjunctionEvents: ConjunctionEvent[];
   conjunctionDistanceKm: number;
   setConjunctionDistance: (km: number) => void;
+  setConjunctionEvents: (events: ConjunctionEvent[]) => void;
+  showConjunctionMarkers: boolean;
+  toggleConjunctionMarkers: () => void;
 
   // Monte Carlo
   mcResult: MonteCarloResult | null;
@@ -114,6 +117,9 @@ export const useAnalysisStore = create<AnalysisState>((set, get) => ({
   conjunctionEvents: [],
   conjunctionDistanceKm: 10,
   setConjunctionDistance: (km) => set({ conjunctionDistanceKm: km }),
+  setConjunctionEvents: (events) => set({ conjunctionEvents: events }),
+  showConjunctionMarkers: true,
+  toggleConjunctionMarkers: () => set((s) => ({ showConjunctionMarkers: !s.showConjunctionMarkers })),
 
   // Monte Carlo
   mcResult: null,
