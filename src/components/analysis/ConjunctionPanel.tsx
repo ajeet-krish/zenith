@@ -1,8 +1,9 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import { useMissionStore } from '@/store/useMissionStore'
 import { useAnalysisStore } from '@/store/useAnalysisStore'
 import { sgp4Propagate, screenConjunctions } from '@/orbit/wasmLoader'
 import type { ConjunctionEvent } from '@/orbit/types'
+import { jdToUtc } from '@/utils/timeFormat'
 
 const RISK_COLORS: Record<string, string> = {
   CRITICAL: 'text-red-500 bg-red-500/10',
@@ -18,17 +19,10 @@ function getRiskLevel(missKm: number): 'CRITICAL' | 'HIGH' | 'MODERATE' | 'LOW' 
   return 'LOW'
 }
 
-/**
- * Convert Julian Date to UTC string.
- */
-function jdToUtc(jd: number): string {
-  const date = new Date((jd - 2440587.5) * 86400000)
-  return date.toISOString().replace('T', ' ').replace(/\.\d{3}Z$/, ' UTC')
-}
-
 export function ConjunctionPanel() {
   const satellites = useMissionStore((s) => s.satellites)
   const currentEpoch = useMissionStore((s) => s.currentEpoch)
+  const wasmReady = useMissionStore((s) => s.wasmReady)
   const conjunctionEvents = useAnalysisStore((s) => s.conjunctionEvents)
   const setConjunctionEvents = useAnalysisStore((s) => s.setConjunctionEvents)
   const showConjunctionMarkers = useAnalysisStore((s) => s.showConjunctionMarkers)
@@ -38,6 +32,11 @@ export function ConjunctionPanel() {
   const [mode, setMode] = useState<'single' | 'window'>('single')
   const [windowDays, setWindowDays] = useState(1)
   const [timeStepS, setTimeStepS] = useState(60)
+  const mountedRef = useRef(true)
+
+  useEffect(() => {
+    return () => { mountedRef.current = false }
+  }, [])
 
   /**
    * Single-epoch screening (original behavior).
@@ -80,8 +79,10 @@ export function ConjunctionPanel() {
       }
 
       found.sort((a, b) => a.missDistanceKm - b.missDistanceKm)
-      setConjunctionEvents(found)
-      setScreening(false)
+      if (mountedRef.current) {
+        setConjunctionEvents(found)
+        setScreening(false)
+      }
     })
   }, [satellites, currentEpoch, threshold, setConjunctionEvents])
 
@@ -95,7 +96,7 @@ export function ConjunctionPanel() {
     setTimeout(() => {
       const visibleSats = satellites.filter((s) => s.visible && s.handle != null)
       if (visibleSats.length < 2) {
-        setScreening(false)
+        if (mountedRef.current) setScreening(false)
         return
       }
 
@@ -137,10 +138,12 @@ export function ConjunctionPanel() {
           }
         })
         found.sort((a, b) => a.missDistanceKm - b.missDistanceKm)
-        setConjunctionEvents(found)
+        if (mountedRef.current) {
+          setConjunctionEvents(found)
+        }
       }
 
-      setScreening(false)
+      if (mountedRef.current) setScreening(false)
     })
   }, [satellites, currentEpoch, threshold, windowDays, timeStepS, setConjunctionEvents])
 
@@ -162,6 +165,8 @@ export function ConjunctionPanel() {
         </button>
         <button
           onClick={() => setMode('window')}
+          disabled={!wasmReady}
+          title={!wasmReady ? 'Requires WASM' : undefined}
           className={`flex-1 px-2 py-1 rounded text-[10px] font-mono transition-colors ${
             mode === 'window'
               ? 'bg-neon-purple/20 text-neon-purple border border-neon-purple/30'
@@ -222,9 +227,15 @@ export function ConjunctionPanel() {
         </div>
       )}
 
+      {!wasmReady && mode === 'window' && (
+        <div className="text-[10px] font-mono text-neon-orange">
+          Requires WASM for time-window screening
+        </div>
+      )}
+
       <button
         onClick={handleRun}
-        disabled={satellites.length < 2 || screening}
+        disabled={satellites.length < 2 || screening || (mode === 'window' && !wasmReady)}
         className="btn-primary w-full text-[11px] font-mono disabled:opacity-40"
       >
         {screening ? 'Screening...' : mode === 'single' ? 'Run Screening' : 'Run Window Screening'}
@@ -247,9 +258,9 @@ export function ConjunctionPanel() {
                 <div className="text-space-300">
                   {evt.sat1Name} / {evt.sat2Name}
                 </div>
-                {'tcaJd' in evt && (evt as any).tcaJd && (
+                {evt.tcaJd != null && (
                   <div className="text-comment">
-                    TCA: {jdToUtc((evt as any).tcaJd)}
+                    TCA: {jdToUtc(evt.tcaJd)}
                   </div>
                 )}
               </div>

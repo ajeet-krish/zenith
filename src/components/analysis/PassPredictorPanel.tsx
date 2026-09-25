@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useMissionStore } from '@/store/useMissionStore'
 import { predictPasses } from '@/orbit/wasmLoader'
 import { sgp4Propagate } from '@/orbit/wasmLoader'
+import { jdToUtc } from '@/utils/timeFormat'
 
 interface PassInfo {
   start_jd: number
@@ -11,18 +12,11 @@ interface PassInfo {
   min_range_km: number
 }
 
-/**
- * Convert Julian Date to UTC string.
- */
-function jdToUtc(jd: number): string {
-  const date = new Date((jd - 2440587.5) * 86400000)
-  return date.toISOString().replace('T', ' ').replace(/\.\d{3}Z$/, ' UTC')
-}
-
 export function PassPredictorPanel() {
   const satellites = useMissionStore((s) => s.satellites)
   const selectedSatelliteId = useMissionStore((s) => s.selectedSatelliteId)
   const currentEpoch = useMissionStore((s) => s.currentEpoch)
+  const wasmReady = useMissionStore((s) => s.wasmReady)
 
   const [stationLat, setStationLat] = useState(35.6812) // Tokyo
   const [stationLon, setStationLon] = useState(139.7671)
@@ -140,11 +134,17 @@ export function PassPredictorPanel() {
 
       <button
         onClick={handlePredict}
-        disabled={!selectedSat || predicting}
+        disabled={!selectedSat || predicting || !wasmReady}
         className="btn-primary w-full text-[11px] font-mono disabled:opacity-40"
       >
         {predicting ? 'Predicting...' : 'Predict Passes'}
       </button>
+
+      {!wasmReady && (
+        <div className="text-[10px] font-mono text-neon-orange">
+          Requires WASM
+        </div>
+      )}
 
       {!selectedSat && (
         <div className="text-[10px] font-mono text-neon-orange">

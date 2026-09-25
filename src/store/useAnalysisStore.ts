@@ -1,6 +1,5 @@
 import { create } from 'zustand';
 import type {
-  AnalysisTool,
   ConjunctionEvent,
   MonteCarloResult,
   WalkerDeltaConfig,
@@ -13,10 +12,6 @@ import { sgp4Propagate } from '@/orbit/wasmLoader';
 // =============================================================================
 
 interface AnalysisState {
-  // Active tool
-  activeTool: AnalysisTool | null;
-  setActiveTool: (tool: AnalysisTool | null) => void;
-
   // Maneuver
   maneuverAlt1Km: number;
   maneuverAlt2Km: number;
@@ -58,10 +53,6 @@ interface AnalysisState {
 // =============================================================================
 
 export const useAnalysisStore = create<AnalysisState>((set, get) => ({
-  // Active tool
-  activeTool: null,
-  setActiveTool: (tool) => set({ activeTool: tool }),
-
   // Maneuver
   maneuverAlt1Km: 400,
   maneuverAlt2Km: 35786,

@@ -57,6 +57,7 @@ export interface ConjunctionEvent {
   sat2Id: string
   missDistanceKm: number
   riskLevel: 'CRITICAL' | 'HIGH' | 'MODERATE' | 'LOW'
+  tcaJd?: number
   position1: { x: number; y: number; z: number }
   position2: { x: number; y: number; z: number }
 }

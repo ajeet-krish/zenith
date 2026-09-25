@@ -120,7 +120,7 @@ export function biellipticTransfer(
  */
 function computeGroundTrackTS(flatTrajectory: number[]): GroundTrackPoint[] {
   const points: GroundTrackPoint[] = []
-  const R_EARTH_KM = 6378.137
+  const R_EARTH_KM = R_EARTH
 
   for (let i = 0; i < flatTrajectory.length; i += 7) {
     const x = flatTrajectory[i]!
