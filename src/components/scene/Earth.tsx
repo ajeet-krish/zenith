@@ -1,28 +1,75 @@
-import { useRef, useMemo } from 'react';
-import { useFrame } from '@react-three/fiber';
+import { useRef, useMemo, Suspense } from 'react';
+import { useFrame, useLoader } from '@react-three/fiber';
 import { Sphere, Billboard } from '@react-three/drei';
 import type { Mesh, Group } from 'three';
-import { CanvasTexture } from 'three';
+import { TextureLoader, CanvasTexture } from 'three';
 import { R_EARTH } from '@/orbit/constants';
 
-/**
- * Scene scale: 1 unit = 1000 km.
- * Earth radius becomes ~6.378 units.
- */
 const SCALE = 1000;
 const EARTH_RADIUS = R_EARTH / SCALE;
 
 /**
- * Earth - styled sphere with atmosphere glow.
+ * Inner Earth with texture (must be inside Suspense).
+ */
+function EarthTextured() {
+  const earthRef = useRef<Mesh>(null);
+  const [diffuseMap] = useLoader(TextureLoader, [
+    `${import.meta.env.BASE_URL}textures/earth/diffuse.jpg`,
+  ]);
+
+  useFrame((_, delta) => {
+    if (earthRef.current) {
+      earthRef.current.rotation.y += delta * 0.02;
+    }
+  });
+
+  return (
+    <Sphere ref={earthRef} args={[EARTH_RADIUS, 64, 64]}>
+      <meshStandardMaterial
+        map={diffuseMap}
+        roughness={0.8}
+        metalness={0.1}
+      />
+    </Sphere>
+  );
+}
+
+/**
+ * Fallback Earth while texture loads.
+ */
+function EarthFallback() {
+  const earthRef = useRef<Mesh>(null);
+
+  useFrame((_, delta) => {
+    if (earthRef.current) {
+      earthRef.current.rotation.y += delta * 0.02;
+    }
+  });
+
+  return (
+    <Sphere ref={earthRef} args={[EARTH_RADIUS, 64, 64]}>
+      <meshStandardMaterial
+        color="#1a5276"
+        roughness={0.8}
+        metalness={0.1}
+        emissive="#0a2a4a"
+        emissiveIntensity={0.15}
+      />
+    </Sphere>
+  );
+}
+
+/**
+ * Earth - textured sphere with subtle glow.
  *
- * Renders a dark-themed Earth at the origin with slow axial rotation
- * and a billboarded glow sprite for atmosphere effect.
+ * Uses NASA Blue Marble texture (loaded via Suspense with fallback).
+ * The existing billboard glow sprite is preserved for atmosphere effect
+ * but kept subtle to avoid blocking LEO orbit lines.
  */
 export function Earth() {
-  const earthRef = useRef<Mesh>(null);
   const glowRef = useRef<Group>(null);
 
-  // Procedural Earth glow texture (radial gradient billboard)
+  // Subtle procedural glow (kept from original - user confirmed it's perfect)
   const glowTexture = useMemo(() => {
     const size = 256;
     const canvas = document.createElement('canvas');
@@ -46,27 +93,14 @@ export function Earth() {
     return tex;
   }, []);
 
-  // Slow axial rotation
-  useFrame((_, delta) => {
-    if (earthRef.current) {
-      earthRef.current.rotation.y += delta * 0.02;
-    }
-  });
-
   return (
     <group>
-      {/* Earth sphere */}
-      <Sphere ref={earthRef} args={[EARTH_RADIUS, 64, 64]}>
-        <meshStandardMaterial
-          color="#1a5276"
-          roughness={0.8}
-          metalness={0.1}
-          emissive="#0a2a4a"
-          emissiveIntensity={0.15}
-        />
-      </Sphere>
+      {/* Earth sphere with texture */}
+      <Suspense fallback={<EarthFallback />}>
+        <EarthTextured />
+      </Suspense>
 
-      {/* Atmosphere glow billboard */}
+      {/* Subtle atmosphere glow billboard */}
       {glowTexture && (
         <Billboard ref={glowRef} follow={true}>
           <mesh>
