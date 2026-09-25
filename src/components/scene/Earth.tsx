@@ -1,49 +1,71 @@
-import { useRef, useMemo } from 'react';
-import { useFrame } from '@react-three/fiber';
-import { Sphere, Billboard } from '@react-three/drei';
-import type { Mesh, Group } from 'three';
-import { CanvasTexture } from 'three';
+import { useRef, useMemo, Suspense } from 'react';
+import { useFrame, useLoader } from '@react-three/fiber';
+import { Sphere } from '@react-three/drei';
+import type { Mesh } from 'three';
+import { TextureLoader, DoubleSide, ShaderMaterial as ThreeShaderMaterial } from 'three';
 import { R_EARTH } from '@/orbit/constants';
 
-/**
- * Scene scale: 1 unit = 1000 km.
- * Earth radius becomes ~6.378 units.
- */
 const SCALE = 1000;
 const EARTH_RADIUS = R_EARTH / SCALE;
 
 /**
- * Earth - textured sphere with subtle atmosphere glow.
- *
- * Renders a blue marble-styled Earth at the origin with a slow axial rotation
- * and a billboarded glow sprite for atmosphere effect.
+ * Fresnel atmosphere vertex shader.
  */
-export function Earth() {
+const atmosphereVertexShader = `
+  varying vec3 vNormal;
+  varying vec3 vViewDir;
+  void main() {
+    vNormal = normalize(normalMatrix * normal);
+    vec4 mvPos = modelViewMatrix * vec4(position, 1.0);
+    vViewDir = normalize(-mvPos.xyz);
+    gl_Position = projectionMatrix * mvPos;
+  }
+`;
+
+/**
+ * Fresnel atmosphere fragment shader.
+ */
+const atmosphereFragmentShader = `
+  uniform vec3 uSunDir;
+  uniform vec3 uGlowColor;
+  varying vec3 vNormal;
+  varying vec3 vViewDir;
+  void main() {
+    float fresnel = pow(1.0 - dot(vNormal, vViewDir), 3.0);
+    float sunFactor = max(dot(vNormal, uSunDir), 0.0);
+    vec3 color = uGlowColor * fresnel * (0.5 + 0.5 * sunFactor);
+    gl_FragColor = vec4(color, fresnel * 0.6);
+  }
+`;
+
+/**
+ * Inner Earth component that loads textures (must be inside Suspense).
+ */
+function EarthInner() {
   const earthRef = useRef<Mesh>(null);
-  const glowRef = useRef<Group>(null);
+  const cloudsRef = useRef<Mesh>(null);
 
-  // Procedural Earth glow texture (radial gradient billboard)
-  const glowTexture = useMemo(() => {
-    const size = 256;
-    const canvas = document.createElement('canvas');
-    canvas.width = size;
-    canvas.height = size;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return null;
+  const textureBase = `${import.meta.env.BASE_URL}textures/earth/`;
 
-    const center = size / 2;
-    const gradient = ctx.createRadialGradient(center, center, 0, center, center, center);
-    gradient.addColorStop(0, 'rgba(80, 160, 255, 0.35)');
-    gradient.addColorStop(0.3, 'rgba(50, 130, 255, 0.12)');
-    gradient.addColorStop(0.7, 'rgba(30, 90, 255, 0.04)');
-    gradient.addColorStop(1, 'rgba(0, 50, 200, 0)');
+  const [diffuseMap, nightMap, cloudsMap] = useLoader(TextureLoader, [
+    `${textureBase}diffuse.jpg`,
+    `${textureBase}night.jpg`,
+    `${textureBase}clouds.png`,
+  ]);
 
-    ctx.fillStyle = gradient;
-    ctx.fillRect(0, 0, size, size);
-
-    const tex = new CanvasTexture(canvas);
-    tex.needsUpdate = true;
-    return tex;
+  // Atmosphere shader material
+  const atmosphereMaterial = useMemo(() => {
+    return new ThreeShaderMaterial({
+      vertexShader: atmosphereVertexShader,
+      fragmentShader: atmosphereFragmentShader,
+      uniforms: {
+        uSunDir: { value: [1, 0.3, 0.5] },
+        uGlowColor: { value: [0.3, 0.6, 1.0] },
+      },
+      transparent: true,
+      side: DoubleSide,
+      depthWrite: false,
+    });
   }, []);
 
   // Slow axial rotation
@@ -51,35 +73,78 @@ export function Earth() {
     if (earthRef.current) {
       earthRef.current.rotation.y += delta * 0.02;
     }
+    if (cloudsRef.current) {
+      cloudsRef.current.rotation.y += delta * 0.025;
+    }
   });
 
   return (
     <group>
-      {/* Earth sphere */}
+      {/* Earth sphere with diffuse texture */}
       <Sphere ref={earthRef} args={[EARTH_RADIUS, 64, 64]}>
         <meshStandardMaterial
-          color="#1a5276"
+          map={diffuseMap}
+          emissiveMap={nightMap}
+          emissive="#ffaa44"
+          emissiveIntensity={0.3}
           roughness={0.8}
           metalness={0.1}
-          emissive="#0a2a4a"
-          emissiveIntensity={0.15}
         />
       </Sphere>
 
-      {/* Atmosphere glow billboard */}
-      {glowTexture && (
-        <Billboard ref={glowRef} follow={true}>
-          <mesh>
-            <planeGeometry args={[EARTH_RADIUS * 3.2, EARTH_RADIUS * 3.2]} />
-            <meshBasicMaterial
-              map={glowTexture}
-              transparent
-              depthWrite={false}
-              blending={2}
-            />
-          </mesh>
-        </Billboard>
-      )}
+      {/* Cloud layer */}
+      <Sphere ref={cloudsRef} args={[EARTH_RADIUS * 1.005, 64, 64]}>
+        <meshStandardMaterial
+          map={cloudsMap}
+          transparent
+          opacity={0.3}
+          depthWrite={false}
+          side={DoubleSide}
+        />
+      </Sphere>
+
+      {/* Fresnel atmosphere glow */}
+      <Sphere args={[EARTH_RADIUS * 1.08, 64, 64]} material={atmosphereMaterial} />
     </group>
+  );
+}
+
+/**
+ * Fallback Earth shown while textures load.
+ */
+function EarthFallback() {
+  const earthRef = useRef<Mesh>(null);
+
+  useFrame((_, delta) => {
+    if (earthRef.current) {
+      earthRef.current.rotation.y += delta * 0.02;
+    }
+  });
+
+  return (
+    <Sphere ref={earthRef} args={[EARTH_RADIUS, 64, 64]}>
+      <meshStandardMaterial
+        color="#1a5276"
+        roughness={0.8}
+        metalness={0.1}
+        emissive="#0a2a4a"
+        emissiveIntensity={0.15}
+      />
+    </Sphere>
+  );
+}
+
+/**
+ * Earth - textured planet with atmosphere.
+ *
+ * Wraps textured Earth in Suspense so the scene renders immediately
+ * with a fallback blue sphere, then upgrades to textured Earth when
+ * NASA Blue Marble textures finish loading.
+ */
+export function Earth() {
+  return (
+    <Suspense fallback={<EarthFallback />}>
+      <EarthInner />
+    </Suspense>
   );
 }
