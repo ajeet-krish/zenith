@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react'
 import { useMissionStore } from '@/store/useMissionStore'
 import { useAnalysisStore } from '@/store/useAnalysisStore'
-import { sgp4Propagate } from '@/orbit/wasmLoader'
+import { sgp4Propagate, screenConjunctions } from '@/orbit/wasmLoader'
 import type { ConjunctionEvent } from '@/orbit/types'
 
 const RISK_COLORS: Record<string, string> = {
@@ -18,6 +18,14 @@ function getRiskLevel(missKm: number): 'CRITICAL' | 'HIGH' | 'MODERATE' | 'LOW' 
   return 'LOW'
 }
 
+/**
+ * Convert Julian Date to UTC string.
+ */
+function jdToUtc(jd: number): string {
+  const date = new Date((jd - 2440587.5) * 86400000)
+  return date.toISOString().replace('T', ' ').replace(/\.\d{3}Z$/, ' UTC')
+}
+
 export function ConjunctionPanel() {
   const satellites = useMissionStore((s) => s.satellites)
   const currentEpoch = useMissionStore((s) => s.currentEpoch)
@@ -27,12 +35,17 @@ export function ConjunctionPanel() {
   const toggleConjunctionMarkers = useAnalysisStore((s) => s.toggleConjunctionMarkers)
   const [screening, setScreening] = useState(false)
   const [threshold, setThreshold] = useState(100)
+  const [mode, setMode] = useState<'single' | 'window'>('single')
+  const [windowDays, setWindowDays] = useState(1)
+  const [timeStepS, setTimeStepS] = useState(60)
 
-  const runScreening = useCallback(() => {
+  /**
+   * Single-epoch screening (original behavior).
+   */
+  const runSingleEpochScreening = useCallback(() => {
     if (satellites.length < 2) return
     setScreening(true)
 
-    // Yield to React so "Screening..." renders before blocking computation
     setTimeout(() => {
       const found: ConjunctionEvent[] = []
       const visibleSats = satellites.filter((s) => s.visible && s.handle != null)
@@ -42,7 +55,6 @@ export function ConjunctionPanel() {
           const s1 = visibleSats[i]!
           const s2 = visibleSats[j]!
 
-          // Compare positions at current epoch
           const p1 = sgp4Propagate(s1.handle!, currentEpoch)
           const p2 = sgp4Propagate(s2.handle!, currentEpoch)
           if (!p1 || !p2) continue
@@ -67,19 +79,100 @@ export function ConjunctionPanel() {
         }
       }
 
-      // Sort by miss distance
       found.sort((a, b) => a.missDistanceKm - b.missDistanceKm)
       setConjunctionEvents(found)
       setScreening(false)
     })
   }, [satellites, currentEpoch, threshold, setConjunctionEvents])
 
+  /**
+   * Time-window screening using WASM screen_conjunctions.
+   */
+  const runWindowScreening = useCallback(() => {
+    if (satellites.length < 2) return
+    setScreening(true)
+
+    setTimeout(() => {
+      const visibleSats = satellites.filter((s) => s.visible && s.handle != null)
+      if (visibleSats.length < 2) {
+        setScreening(false)
+        return
+      }
+
+      // Build trajectories for all satellites over the time window
+      const totalSeconds = windowDays * 86400
+      const nSteps = Math.ceil(totalSeconds / timeStepS)
+      const catalog: number[][] = []
+
+      for (const sat of visibleSats) {
+        const flatTrajectory: number[] = []
+        for (let i = 0; i <= nSteps; i++) {
+          const tSec = i * timeStepS
+          const jd = currentEpoch + tSec / 86400
+          const sv = sgp4Propagate(sat.handle!, jd)
+          if (sv) {
+            flatTrajectory.push(sv.x, sv.y, sv.z, sv.vx, sv.vy, sv.vz, jd)
+          }
+        }
+        catalog.push(flatTrajectory)
+      }
+
+      // Use WASM screen_conjunctions
+      const wasmEvents = screenConjunctions(catalog, threshold)
+
+      if (wasmEvents) {
+        const found: ConjunctionEvent[] = wasmEvents.map((evt: any) => {
+          const s1 = visibleSats[evt.sat_id_1]
+          const s2 = visibleSats[evt.sat_id_2]
+          return {
+            sat1Name: s1?.name ?? `Sat ${evt.sat_id_1}`,
+            sat2Name: s2?.name ?? `Sat ${evt.sat_id_2}`,
+            sat1Id: s1?.id ?? '',
+            sat2Id: s2?.id ?? '',
+            missDistanceKm: evt.miss_distance_km,
+            riskLevel: getRiskLevel(evt.miss_distance_km),
+            tcaJd: evt.tca_jd,
+            position1: { x: 0, y: 0, z: 0 },
+            position2: { x: 0, y: 0, z: 0 },
+          }
+        })
+        found.sort((a, b) => a.missDistanceKm - b.missDistanceKm)
+        setConjunctionEvents(found)
+      }
+
+      setScreening(false)
+    })
+  }, [satellites, currentEpoch, threshold, windowDays, timeStepS, setConjunctionEvents])
+
+  const handleRun = mode === 'single' ? runSingleEpochScreening : runWindowScreening
+
   return (
     <div className="space-y-3">
-      <span className="text-[10px] font-mono text-comment uppercase tracking-wider">
-        Conjunction Screening
-      </span>
+      {/* Mode toggle */}
+      <div className="flex gap-1">
+        <button
+          onClick={() => setMode('single')}
+          className={`flex-1 px-2 py-1 rounded text-[10px] font-mono transition-colors ${
+            mode === 'single'
+              ? 'bg-neon-purple/20 text-neon-purple border border-neon-purple/30'
+              : 'bg-white/5 text-comment hover:text-white hover:bg-white/10 border border-transparent'
+          }`}
+        >
+          Single Epoch
+        </button>
+        <button
+          onClick={() => setMode('window')}
+          className={`flex-1 px-2 py-1 rounded text-[10px] font-mono transition-colors ${
+            mode === 'window'
+              ? 'bg-neon-purple/20 text-neon-purple border border-neon-purple/30'
+              : 'bg-white/5 text-comment hover:text-white hover:bg-white/10 border border-transparent'
+          }`}
+        >
+          Time Window
+        </button>
+      </div>
 
+      {/* Threshold */}
       <div>
         <label className="text-[10px] font-mono text-comment block mb-1">
           Threshold (km)
@@ -95,12 +188,46 @@ export function ConjunctionPanel() {
         />
       </div>
 
+      {/* Time window settings */}
+      {mode === 'window' && (
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <label className="text-[10px] font-mono text-comment block mb-1">
+              Duration (days)
+            </label>
+            <input
+              type="number"
+              min={0.1}
+              max={30}
+              step={0.5}
+              value={windowDays}
+              onChange={(e) => setWindowDays(parseFloat(e.target.value) || 1)}
+              className="input-field w-full"
+            />
+          </div>
+          <div>
+            <label className="text-[10px] font-mono text-comment block mb-1">
+              Time Step (s)
+            </label>
+            <input
+              type="number"
+              min={10}
+              max={3600}
+              step={10}
+              value={timeStepS}
+              onChange={(e) => setTimeStepS(parseFloat(e.target.value) || 60)}
+              className="input-field w-full"
+            />
+          </div>
+        </div>
+      )}
+
       <button
-        onClick={runScreening}
+        onClick={handleRun}
         disabled={satellites.length < 2 || screening}
         className="btn-primary w-full text-[11px] font-mono disabled:opacity-40"
       >
-        {screening ? 'Screening...' : 'Run Screening'}
+        {screening ? 'Screening...' : mode === 'single' ? 'Run Screening' : 'Run Window Screening'}
       </button>
 
       {conjunctionEvents.length > 0 && (
@@ -120,6 +247,11 @@ export function ConjunctionPanel() {
                 <div className="text-space-300">
                   {evt.sat1Name} / {evt.sat2Name}
                 </div>
+                {'tcaJd' in evt && (evt as any).tcaJd && (
+                  <div className="text-comment">
+                    TCA: {jdToUtc((evt as any).tcaJd)}
+                  </div>
+                )}
               </div>
             ))}
           </div>
