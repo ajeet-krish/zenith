@@ -64,9 +64,9 @@ function getOrbitalPeriod(satId: string | null): number {
 }
 
 /**
- * TimeControls - floating panel for time management.
+ * TimeControls - compact horizontal playback bar pinned to the top of the scene.
  *
- * Features: play/pause, speed selector, step forward/backward, reset.
+ * YouTube-style layout: [date] [step-back play/pause step-forward reset] [speed]
  */
 export function TimeControls() {
   const currentEpoch = useMissionStore((s) => s.currentEpoch);
@@ -118,28 +118,25 @@ export function TimeControls() {
   }, [setCurrentEpoch]);
 
   return (
-    <div className="panel">
-      <div className="panel-header">
-        <span className="panel-label">TIME</span>
-      </div>
+    <div className="flex items-center gap-3 px-3 py-1.5 bg-black/60 backdrop-blur-sm border-b border-white/5 font-mono text-[11px]">
+      {/* Date/time display */}
+      <span className="text-white tabular-nums shrink-0">
+        {formatJd(currentEpoch)}
+      </span>
 
-      {/* Date display */}
-      <div className="px-3 py-2 border-b border-dust">
-        <div className="font-mono text-xs text-white tabular-nums">
-          {formatJd(currentEpoch)}
-        </div>
-      </div>
+      {/* Divider */}
+      <div className="w-px h-4 bg-white/10" />
 
       {/* Playback controls */}
-      <div className="px-3 py-2 flex items-center gap-2">
+      <div className="flex items-center gap-0.5">
         {/* Step backward */}
         <button
           onClick={() => handleStep(-1)}
-          className="btn-icon"
+          className="p-1 rounded text-comment hover:text-white hover:bg-white/10 transition-colors"
           title="Step backward 1 period"
           aria-label="Step backward"
         >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <polygon points="19 20 9 12 19 4" />
             <line x1="5" y1="19" x2="5" y2="5" />
           </svg>
@@ -148,17 +145,21 @@ export function TimeControls() {
         {/* Play/Pause */}
         <button
           onClick={() => setIsPlaying(!isPlaying)}
-          className={`btn-icon ${isPlaying ? 'btn-icon-active' : ''}`}
+          className={`p-1 rounded transition-colors ${
+            isPlaying
+              ? 'text-neon-purple bg-neon-purple/20'
+              : 'text-white hover:bg-white/10'
+          }`}
           title={isPlaying ? 'Pause' : 'Play'}
           aria-label={isPlaying ? 'Pause' : 'Play'}
         >
           {isPlaying ? (
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
               <rect x="6" y="4" width="4" height="16" />
               <rect x="14" y="4" width="4" height="16" />
             </svg>
           ) : (
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
               <polygon points="5 3 19 12 5 21" />
             </svg>
           )}
@@ -167,11 +168,11 @@ export function TimeControls() {
         {/* Step forward */}
         <button
           onClick={() => handleStep(1)}
-          className="btn-icon"
+          className="p-1 rounded text-comment hover:text-white hover:bg-white/10 transition-colors"
           title="Step forward 1 period"
           aria-label="Step forward"
         >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <polygon points="5 4 15 12 5 20" />
             <line x1="19" y1="5" x2="19" y2="19" />
           </svg>
@@ -180,35 +181,36 @@ export function TimeControls() {
         {/* Reset */}
         <button
           onClick={handleReset}
-          className="btn-icon"
+          className="p-1 rounded text-comment hover:text-white hover:bg-white/10 transition-colors"
           title="Reset to current time"
           aria-label="Reset to current time"
         >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <polyline points="1 4 1 10 7 10" />
             <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
           </svg>
         </button>
       </div>
 
+      {/* Divider */}
+      <div className="w-px h-4 bg-white/10" />
+
       {/* Speed selector */}
-      <div className="px-3 py-2 border-t border-dust">
-        <div className="flex items-center gap-1">
-          {SPEED_OPTIONS.map((speed) => (
-            <button
-              key={speed}
-              onClick={() => setTimeSpeed(speed)}
-              className={`text-[10px] font-mono px-1.5 py-0.5 transition-colors ${
-                timeSpeed === speed
-                  ? 'bg-neon-purple/30 text-neon-purple'
-                  : 'text-comment hover:text-space-50 hover:bg-white/5'
-              }`}
-              aria-label={`Set speed to ${speed}x`}
-            >
-              {speed}x
-            </button>
-          ))}
-        </div>
+      <div className="flex items-center gap-0.5">
+        {SPEED_OPTIONS.map((speed) => (
+          <button
+            key={speed}
+            onClick={() => setTimeSpeed(speed)}
+            className={`px-1 py-0.5 rounded transition-colors ${
+              timeSpeed === speed
+                ? 'bg-neon-purple/30 text-neon-purple'
+                : 'text-comment hover:text-white hover:bg-white/5'
+            }`}
+            aria-label={`Set speed to ${speed}x`}
+          >
+            {speed}x
+          </button>
+        ))}
       </div>
     </div>
   );

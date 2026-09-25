@@ -58,12 +58,7 @@ describe('TimeControls', () => {
     global.cancelAnimationFrame = vi.fn((id) => clearTimeout(id as any)) as any
   })
 
-  it('renders the TIME panel label', () => {
-    render(<TimeControls />)
-    expect(screen.getByText('TIME')).toBeInTheDocument()
-  })
-
-  it('renders a time display with UTC', () => {
+  it('renders the time display', () => {
     render(<TimeControls />)
     expect(screen.getByText(/UTC/)).toBeInTheDocument()
   })
