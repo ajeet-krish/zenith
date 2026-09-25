@@ -3,6 +3,7 @@ import { ManeuverPanel } from './ManeuverPanel';
 import { LambertPanel } from './LambertPanel';
 import { GroundTrackPanel } from './GroundTrackPanel';
 import { ConjunctionPanel } from './ConjunctionPanel';
+import { EclipsePanel } from './EclipsePanel';
 import { PassPredictorPanel } from './PassPredictorPanel';
 import { MonteCarloPanel } from './MonteCarloPanel';
 import { CoveragePanel } from './CoveragePanel';
@@ -17,6 +18,7 @@ const TOOLS: ToolSection[] = [
   { id: 'maneuver', label: 'MANEUVER', component: <ManeuverPanel /> },
   { id: 'lambert', label: 'LAMBERT', component: <LambertPanel /> },
   { id: 'groundtrack', label: 'GROUND TRACK', component: <GroundTrackPanel /> },
+  { id: 'eclipse', label: 'ECLIPSE', component: <EclipsePanel /> },
   { id: 'conjunction', label: 'CONJUNCTION', component: <ConjunctionPanel /> },
   { id: 'passpredict', label: 'PASS PREDICTOR', component: <PassPredictorPanel /> },
   { id: 'montecarlo', label: 'MONTE CARLO', component: <MonteCarloPanel /> },
