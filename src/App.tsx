@@ -5,6 +5,7 @@ import { OrbitScene } from '@/components/scene/OrbitScene';
 import { TimeControls } from '@/components/ui/TimeControls';
 import { SatelliteList } from '@/components/ui/SatelliteList';
 import { TLEInput } from '@/components/ui/TLEInput';
+import { CatalogBrowser } from '@/components/ui/CatalogBrowser';
 import { SatelliteInfo } from '@/components/ui/SatelliteInfo';
 import { AnalysisPanel } from '@/components/analysis/AnalysisPanel';
 import { Starfield } from '@/components/ui/Starfield';
@@ -30,6 +31,7 @@ const RIGHT_DEFAULT = 288;
 function OrbitToolPage() {
   const [loading, setLoading] = useState(true);
   const [showTleInput, setShowTleInput] = useState(false);
+  const [showCatalog, setShowCatalog] = useState(false);
   const [leftWidth, setLeftWidth] = useState(LEFT_DEFAULT);
   const [rightWidth, setRightWidth] = useState(RIGHT_DEFAULT);
   const selectedSatelliteId = useMissionStore((s) => s.selectedSatelliteId);
@@ -59,7 +61,7 @@ function OrbitToolPage() {
         className="shrink-0 border-r border-dust bg-[#0d0d12] z-10 flex flex-col"
         style={{ width: leftWidth }}
       >
-        <SatelliteList onOpenTleInput={() => setShowTleInput(true)} />
+        <SatelliteList onOpenTleInput={() => setShowTleInput(true)} onOpenCatalog={() => setShowCatalog(true)} />
       </aside>
 
       {/* Left resize handle */}
@@ -127,6 +129,11 @@ function OrbitToolPage() {
       {showTleInput && (
         <TLEInput onClose={() => setShowTleInput(false)} />
       )}
+
+      {/* Catalog Browser Modal */}
+      {showCatalog && (
+        <CatalogBrowser onClose={() => setShowCatalog(false)} />
+      )}
     </div>
   );
 }
@@ -162,7 +169,7 @@ function App() {
               Orbit
             </NavLink>
             <NavLink
-              to="/theory"
+              to="/guide"
               className={({ isActive }) =>
                 `px-3 py-1.5 text-xs font-mono transition-colors rounded ${
                   isActive
@@ -171,7 +178,7 @@ function App() {
                 }`
               }
             >
-              Theory
+              Guide
             </NavLink>
           </nav>
 
@@ -198,7 +205,7 @@ function App() {
         <div className="flex-1 flex overflow-hidden">
           <Routes>
             <Route path="/" element={<OrbitToolPage />} />
-            <Route path="/theory" element={<TheoryPage />} />
+            <Route path="/guide" element={<TheoryPage />} />
           </Routes>
         </div>
       </div>

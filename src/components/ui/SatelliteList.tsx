@@ -8,8 +8,10 @@ import type { Satellite } from '@/store/useMissionStore';
  */
 export function SatelliteList({
   onOpenTleInput,
+  onOpenCatalog,
 }: {
   onOpenTleInput: () => void;
+  onOpenCatalog: () => void;
 }) {
   const satellites = useMissionStore((s) => s.satellites);
   const selectedId = useMissionStore((s) => s.selectedSatelliteId);
@@ -43,12 +45,20 @@ export function SatelliteList({
             <div className="text-xs text-comment font-mono mb-2">
               No satellites loaded
             </div>
-            <button
-              onClick={onOpenTleInput}
-              className="text-[10px] font-mono text-neon-purple hover:text-neon-purple/80 transition-colors"
-            >
-              Add a satellite
-            </button>
+            <div className="space-y-1">
+              <button
+                onClick={onOpenCatalog}
+                className="block w-full text-[10px] font-mono text-neon-cyan hover:text-neon-cyan/80 transition-colors"
+              >
+                Browse Catalog
+              </button>
+              <button
+                onClick={onOpenTleInput}
+                className="block w-full text-[10px] font-mono text-neon-purple hover:text-neon-purple/80 transition-colors"
+              >
+                Add from TLE
+              </button>
+            </div>
           </div>
         ) : (
           categoryOrder.map((cat) => {
@@ -87,11 +97,17 @@ export function SatelliteList({
         )}
       </div>
 
-      {/* Add TLE button */}
-      <div className="px-3 py-2 border-t border-dust shrink-0">
+      {/* Add buttons */}
+      <div className="px-3 py-2 border-t border-dust shrink-0 flex gap-1">
+        <button
+          onClick={onOpenCatalog}
+          className="flex-1 btn-secondary text-[10px] font-mono py-1.5"
+        >
+          Catalog
+        </button>
         <button
           onClick={onOpenTleInput}
-          className="w-full btn-primary text-[11px] font-mono py-1.5"
+          className="flex-1 btn-primary text-[10px] font-mono py-1.5"
         >
           + Add TLE
         </button>
