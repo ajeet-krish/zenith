@@ -6,7 +6,7 @@
   "description": "Interactive satellite mission planner and orbital mechanics educational tool",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "tsc -p tsconfig.build.json --noEmit && vite build",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
