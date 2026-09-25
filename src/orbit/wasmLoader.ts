@@ -1,4 +1,5 @@
 import { parse_tle } from '@/processing/tle_parser'
+import { MU_EARTH } from './constants'
 
 // Module-level state
 let wasmModule: any = null
@@ -18,7 +19,6 @@ const wasm_to_ts_handle: Map<number, number> = new Map()
 let next_handle = 1
 
 const DEG_TO_RAD = Math.PI / 180
-const MU_EARTH = 398600.4418
 
 /**
  * Initialize the WASM module via Emscripten embind.

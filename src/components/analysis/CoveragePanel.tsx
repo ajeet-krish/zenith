@@ -1,9 +1,9 @@
 import { useState } from 'react'
 import { useAnalysisStore } from '@/store/useAnalysisStore'
-import { useMissionStore } from '@/store/useMissionStore'
+import { useMissionStore, CATEGORY_COLORS } from '@/store/useMissionStore'
 import { generateWalker, type WalkerState } from '@/orbit/analysisLoader'
 import { sgp4Init } from '@/orbit/wasmLoader'
-import { CATEGORY_COLORS } from '@/store/useMissionStore'
+import { MU_EARTH } from '@/orbit/constants'
 
 /**
  * Convert a Walker state (ECI position/velocity) back to a TLE-like representation.
@@ -11,7 +11,6 @@ import { CATEGORY_COLORS } from '@/store/useMissionStore'
  */
 function walkerStateToTle(state: WalkerState, index: number): { line1: string; line2: string } {
   // Compute mean motion from semi-major axis (circular orbit assumption)
-  const MU_EARTH = 398600.4418
   const a = Math.sqrt(state.x ** 2 + state.y ** 2 + state.z ** 2)
   const nRevPerDay = Math.sqrt(MU_EARTH / (a ** 3)) * 86400 / (2 * Math.PI)
 

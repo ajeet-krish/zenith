@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { useMissionStore } from '@/store/useMissionStore';
 import { sgp4GetElements } from '@/orbit/wasmLoader';
-import { MU_EARTH } from '@/orbit/constants';
+import { MU_EARTH, R_EARTH } from '@/orbit/constants';
 
 /**
  * Format a number with fixed precision.
@@ -34,7 +34,6 @@ export function StatusBar() {
     const elements = sgp4GetElements(sat.handle, currentEpoch);
     if (!elements || elements.a <= 0) return null;
 
-    const R_EARTH = 6378.137;
     const altitude = elements.a - R_EARTH;
     const period = 2 * Math.PI * Math.sqrt(Math.pow(elements.a, 3) / MU_EARTH);
     const periodMin = period / 60;

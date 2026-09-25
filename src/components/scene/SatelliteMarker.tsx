@@ -4,7 +4,7 @@ import { Html } from '@react-three/drei';
 import type { Group } from 'three';
 import * as THREE from 'three';
 import { useMissionStore } from '@/store/useMissionStore';
-import { sgp4Propagate } from '@/orbit/wasmLoader';
+import { propagateSatellite } from '@/orbit/wasmLoader';
 
 /**
  * Throttle interval in seconds. Satellite positions are propagated at 10Hz
@@ -49,9 +49,11 @@ export function SatelliteMarker({
     // Only propagate at 10Hz intervals
     if (accumRef.current >= PROPAGATION_INTERVAL) {
       accumRef.current = 0;
-      const jd = useMissionStore.getState().currentEpoch;
+      const state = useMissionStore.getState();
+      const jd = state.currentEpoch;
+      const method = state.propagationMethod;
       try {
-        const result = sgp4Propagate(handle, jd);
+        const result = propagateSatellite(handle, jd, method);
         if (result) {
           const SCALE = 1000;
           const pos = new THREE.Vector3(
