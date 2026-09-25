@@ -111,6 +111,116 @@ export function biellipticTransfer(
 }
 
 // =============================================================================
+// Plane Change + Combined Maneuvers
+// =============================================================================
+
+export interface PlaneChangeResult {
+  dvPlane: number        // km/s, plane change only
+  dvHohmann: number      // km/s, Hohmann transfer only
+  dvCombined: number     // km/s, combined (vector sum approximation)
+  transferTimeS: number  // seconds
+}
+
+/**
+ * Compute plane change delta-V for circular orbits.
+ * Uses the formula: dv = 2*v*sin(di/2) at the target orbit radius.
+ */
+export function planeChangeDv(
+  r1Km: number,
+  r2Km: number,
+  incChangeDeg: number
+): PlaneChangeResult {
+  const incChangeRad = incChangeDeg * Math.PI / 180
+
+  // Hohmann transfer delta-V
+  const hohmann = hohmannFromAltitudesTS(r1Km - R_EARTH, r2Km - R_EARTH)
+
+  // Velocity at target orbit (circular)
+  const v2 = Math.sqrt(MU_EARTH / r2Km)
+
+  // Plane change delta-V at target orbit
+  const dvPlane = 2 * v2 * Math.sin(incChangeRad / 2)
+
+  // Combined: vector sum approximation (conservative overestimate)
+  const dvCombined = hohmann.dvTotal + dvPlane
+
+  return {
+    dvPlane,
+    dvHohmann: hohmann.dvTotal,
+    dvCombined,
+    transferTimeS: hohmann.transferTimeS,
+  }
+}
+
+export interface PhasingResult {
+  phasingPeriod: number  // seconds, period of phasing orbit
+  numRevolutions: number
+  transferTimeS: number  // seconds
+  dv: number             // km/s
+}
+
+/**
+ * Compute phasing orbit for catching up or falling behind a target.
+ */
+export function phasingOrbit(
+  rKm: number,
+  phaseAngleDeg: number,
+  periodsToPhase: number
+): PhasingResult {
+  const phaseAngleRad = phaseAngleDeg * Math.PI / 180
+
+  // Circular orbit period
+  const T = 2 * Math.PI * Math.sqrt(Math.pow(rKm, 3) / MU_EARTH)
+
+  // Required period change to close the phase angle
+  const dT = (phaseAngleRad / (2 * Math.PI)) * T / periodsToPhase
+  const phasingPeriod = T + dT
+
+  // Semi-major axis of phasing orbit
+  const aPhasing = Math.pow(MU_EARTH * Math.pow(phasingPeriod / (2 * Math.PI), 2), 1 / 3)
+
+  // Delta-V for phasing burn
+  const vCircular = Math.sqrt(MU_EARTH / rKm)
+  const vPhasing = Math.sqrt(MU_EARTH * (2 / rKm - 1 / aPhasing))
+  const dv = Math.abs(vPhasing - vCircular)
+
+  return {
+    phasingPeriod,
+    numRevolutions: periodsToPhase,
+    transferTimeS: periodsToPhase * phasingPeriod,
+    dv,
+  }
+}
+
+export interface TransferComparison {
+  hohmann: HohmannResult
+  bielliptic: BiellipticResult | null
+  hohmannBetter: boolean
+  breakevenRatio: number
+}
+
+/**
+ * Compare Hohmann vs bi-elliptic transfers.
+ * Bi-elliptic is more efficient when r2/r1 > 11.94.
+ */
+export function compareTransfers(
+  r1Km: number,
+  r2Km: number,
+  rIntermediateKm: number
+): TransferComparison {
+  const hohmann = hohmannFromAltitudesTS(r1Km - R_EARTH, r2Km - R_EARTH)
+  const bielliptic = biellipticTransfer(r1Km, r2Km, rIntermediateKm)
+  const ratio = Math.max(r1Km, r2Km) / Math.min(r1Km, r2Km)
+
+  return {
+    hohmann,
+    bielliptic,
+    hohmannBetter: bielliptic ? hohmann.dvTotal <= bielliptic.dvTotal : true,
+    breakevenRatio: ratio,
+  }
+}
+
+// =============================================================================
 // Ground Track
 // =============================================================================
 
