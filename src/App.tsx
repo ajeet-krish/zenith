@@ -35,12 +35,12 @@ function OrbitToolPage() {
   return (
     <div className="flex-1 flex overflow-hidden">
       {/* Left sidebar: Satellite List */}
-      <aside className="w-64 shrink-0 border-r border-dust bg-[#0d0d12] z-10 flex flex-col">
+      <aside className="w-52 shrink-0 border-r border-dust bg-[#0d0d12] z-10 flex flex-col">
         <SatelliteList onOpenTleInput={() => setShowTleInput(true)} />
       </aside>
 
       {/* 3D Scene with overlay panels */}
-      <main className="flex-1 flex flex-col relative">
+      <main className="flex-1 min-w-0 flex flex-col relative">
         {/* Time Controls bar - pinned to top */}
         <div className="shrink-0 z-10">
           <TimeControls />
