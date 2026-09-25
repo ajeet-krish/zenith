@@ -85,8 +85,9 @@ export function TheoryPage() {
         </P>
         <P>
           You can load satellites from Two-Line Element sets, visualize their orbits around Earth,
-          compute Hohmann transfers, generate ground tracks, screen for conjunctions, run Monte Carlo
-          uncertainty analyses, and design Walker Delta constellations, all from your browser.
+          solve Lambert problems, predict ground station passes, compute Hohmann transfers, generate
+          ground tracks, screen for conjunctions over time windows, run Monte Carlo uncertainty
+          analyses, and design Walker Delta constellations, all from your browser.
         </P>
         <div className="bg-card-surface border border-dust rounded p-4 my-4 text-xs font-mono">
           <a
@@ -95,7 +96,7 @@ export function TheoryPage() {
             rel="noopener noreferrer"
             className="text-neon-purple hover:text-neon-cyan transition-colors"
           >
-            github.com/AjeetSingh02/zenith-web
+            github.com/ajeet-krish/zenith
           </a>
           <span className="text-comment ml-2">- source code, issues, and contributions</span>
         </div>
@@ -338,18 +339,32 @@ export function TheoryPage() {
           the TLE Input button to add satellites from Two-Line Element sets.
         </P>
 
-        <H3>Right Sidebar - Analysis Tools & Propagation</H3>
+        <H3>Right Sidebar - Analysis Tools</H3>
         <P>
-          The right panel contains two sections:
+          The right panel contains vertically stacked collapsible sections (modeled after the Zenith
+          desktop layout). Multiple analysis sections can be open simultaneously:
         </P>
         <ul className="list-disc list-inside text-sm font-mono text-space-300 mb-3 space-y-1">
           <li>
-            <span className="text-neon-purple">Analysis Tools (top)</span> - Five tabbed analysis
-            tools for mission planning and orbital analysis
+            <span className="text-neon-purple">Maneuver</span> - Hohmann transfer delta-V planning
           </li>
           <li>
-            <span className="text-neon-purple">Propagation (bottom)</span> - Configure the
-            propagator method, force models, and view the current epoch
+            <span className="text-neon-purple">Lambert</span> - Solve Lambert's problem for trajectory design
+          </li>
+          <li>
+            <span className="text-neon-purple">Ground Track</span> - Sub-satellite point visualization
+          </li>
+          <li>
+            <span className="text-neon-purple">Conjunction</span> - Single-epoch and time-window screening
+          </li>
+          <li>
+            <span className="text-neon-purple">Pass Predictor</span> - Ground station pass prediction
+          </li>
+          <li>
+            <span className="text-neon-purple">Monte Carlo</span> - Uncertainty propagation
+          </li>
+          <li>
+            <span className="text-neon-purple">Walker Constellation</span> - Multi-plane constellation design
           </li>
         </ul>
 
@@ -383,6 +398,23 @@ export function TheoryPage() {
           Enter the initial and target altitudes (in km above Earth's surface) and click Compute
           Transfer to see the burn magnitudes and transfer duration. The tool uses the vis-viva
           equation and Hohmann geometry to compute exact delta-V requirements.
+        </P>
+
+        <H3>Lambert Solver</H3>
+        <P>
+          Lambert's problem determines the orbit connecting two position vectors in a given time of
+          flight. Given departure position <InlineMath tex="\mathbf{r}_1" />, arrival position{' '}
+          <InlineMath tex="\mathbf{r}_2" />, and time of flight{' '}
+          <InlineMath tex="\Delta t" />, the solver finds the velocity vectors at both points.
+        </P>
+        <P>
+          This is essential for interplanetary transfer design, rendezvous planning, and orbit
+          determination from angles-only observations. The solver uses the universal variable
+          formulation and iterates on the Stumpff functions to find the transfer orbit.
+        </P>
+        <P>
+          Enter departure and arrival positions (in TEME km) and the time of flight (in seconds).
+          The solver returns the velocity vectors at both endpoints and indicates convergence.
         </P>
 
         <H3>Ground Track</H3>
@@ -434,10 +466,30 @@ export function TheoryPage() {
           events are found, toggle 3D Markers to visualize conjunction points in the scene as red
           spheres connecting the two satellites.
         </P>
-        <Note>
-          This implementation screens at a single epoch (the current time). For operational conjunction
-          assessment, you would typically screen over a time window with propagation.
-        </Note>
+        <P>
+          Zenith supports two screening modes: <span className="text-neon-purple">Single Epoch</span>{' '}
+          (checks positions at the current time) and{' '}
+          <span className="text-neon-purple">Time Window</span> (propagates all satellites over a
+          configurable duration and finds the closest approach for each pair). The time window mode
+          uses WASM-accelerated batch screening and displays the Time of Closest Approach (TCA) for
+          each event.
+        </P>
+
+        <H3>Pass Predictor</H3>
+        <P>
+          Predicts when a satellite will pass over a ground station. The tool propagates the
+          satellite's orbit over a configurable time window and computes visibility from the ground
+          station location, accounting for the elevation mask angle.
+        </P>
+        <P>
+          For each pass, the tool reports: start and end times (AOS/LOS), maximum elevation angle,
+          pass duration, and minimum slant range. This is essential for scheduling communication
+          windows and planning ground station operations.
+        </P>
+        <P>
+          Configure the ground station latitude, longitude, altitude, and minimum elevation mask.
+          Set the prediction window duration (up to 30 days) and click Predict Passes.
+        </P>
 
         <H3>Monte Carlo Propagation</H3>
         <P>

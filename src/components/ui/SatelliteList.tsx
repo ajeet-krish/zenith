@@ -4,7 +4,7 @@ import type { Satellite } from '@/store/useMissionStore';
 /**
  * SatelliteList - sidebar panel showing all loaded satellites.
  *
- * Features: satellite list with visibility toggle, selection, category colors.
+ * Uses collapsible category sections matching the analysis panel style.
  */
 export function SatelliteList({
   onOpenTleInput,
@@ -27,9 +27,12 @@ export function SatelliteList({
   const categoryOrder: Satellite['category'][] = ['LEO', 'MEO', 'GEO', 'HEO', 'DEBRIS'];
 
   return (
-    <div className="panel flex flex-col h-full">
-      <div className="panel-header flex items-center justify-between">
-        <span className="panel-label">SATELLITES</span>
+    <div className="bg-[#0d0d12] flex flex-col h-full overflow-hidden">
+      {/* Header */}
+      <div className="px-3 py-2 border-b border-dust flex items-center justify-between shrink-0">
+        <span className="text-[10px] font-mono text-comment uppercase tracking-wider">
+          SATELLITES
+        </span>
         <span className="text-[10px] font-mono text-comment">{satellites.length}</span>
       </div>
 
@@ -55,7 +58,7 @@ export function SatelliteList({
             return (
               <div key={cat}>
                 {/* Category header */}
-                <div className="px-3 py-1.5 flex items-center gap-2 bg-black/20">
+                <div className="px-3 py-1.5 flex items-center gap-2 border-b border-dust/50">
                   <div
                     className="w-1.5 h-1.5 rounded-full"
                     style={{ backgroundColor: CATEGORY_COLORS[cat] }}
@@ -85,7 +88,7 @@ export function SatelliteList({
       </div>
 
       {/* Add TLE button */}
-      <div className="px-3 py-2 border-t border-dust">
+      <div className="px-3 py-2 border-t border-dust shrink-0">
         <button
           onClick={onOpenTleInput}
           className="w-full btn-primary text-[11px] font-mono py-1.5"

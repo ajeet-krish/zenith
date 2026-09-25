@@ -4,12 +4,19 @@ import { Sphere, Billboard } from '@react-three/drei';
 import type { Mesh, Group } from 'three';
 import { TextureLoader, CanvasTexture } from 'three';
 import { R_EARTH } from '@/orbit/constants';
+import { useMissionStore } from '@/store/useMissionStore';
 
 const SCALE = 1000;
 const EARTH_RADIUS = R_EARTH / SCALE;
 
 /**
+ * Earth's sidereal rotation rate: 2*PI / 86164 seconds (one sidereal day).
+ */
+const EARTH_ROTATION_RATE = (2 * Math.PI) / 86164;
+
+/**
  * Inner Earth with texture (must be inside Suspense).
+ * Rotation is driven by time speed from the mission store.
  */
 function EarthTextured() {
   const earthRef = useRef<Mesh>(null);
@@ -19,7 +26,10 @@ function EarthTextured() {
 
   useFrame((_, delta) => {
     if (earthRef.current) {
-      earthRef.current.rotation.y += delta * 0.02;
+      const timeSpeed = useMissionStore.getState().timeSpeed;
+      const isPlaying = useMissionStore.getState().isPlaying;
+      const speed = isPlaying ? timeSpeed : 0;
+      earthRef.current.rotation.y += delta * EARTH_ROTATION_RATE * speed * 100;
     }
   });
 
@@ -42,7 +52,10 @@ function EarthFallback() {
 
   useFrame((_, delta) => {
     if (earthRef.current) {
-      earthRef.current.rotation.y += delta * 0.02;
+      const timeSpeed = useMissionStore.getState().timeSpeed;
+      const isPlaying = useMissionStore.getState().isPlaying;
+      const speed = isPlaying ? timeSpeed : 0;
+      earthRef.current.rotation.y += delta * EARTH_ROTATION_RATE * speed * 100;
     }
   });
 
@@ -62,14 +75,13 @@ function EarthFallback() {
 /**
  * Earth - textured sphere with subtle glow.
  *
- * Uses NASA Blue Marble texture (loaded via Suspense with fallback).
- * The existing billboard glow sprite is preserved for atmosphere effect
- * but kept subtle to avoid blocking LEO orbit lines.
+ * Rotation is synchronized with the simulation time speed.
+ * When time is paused, Earth stops rotating.
+ * When time is sped up, Earth rotates proportionally faster.
  */
 export function Earth() {
   const glowRef = useRef<Group>(null);
 
-  // Subtle procedural glow (kept from original - user confirmed it's perfect)
   const glowTexture = useMemo(() => {
     const size = 256;
     const canvas = document.createElement('canvas');
@@ -95,12 +107,10 @@ export function Earth() {
 
   return (
     <group>
-      {/* Earth sphere with texture */}
       <Suspense fallback={<EarthFallback />}>
         <EarthTextured />
       </Suspense>
 
-      {/* Subtle atmosphere glow billboard */}
       {glowTexture && (
         <Billboard ref={glowRef} follow={true}>
           <mesh>

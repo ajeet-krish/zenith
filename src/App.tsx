@@ -105,7 +105,7 @@ function OrbitToolPage() {
 
           {/* Floating: Satellite Info (when selected) */}
           {selectedSatelliteId && (
-            <div className="absolute top-3 left-3 z-10 pointer-events-auto animate-fade-in">
+            <div className="absolute top-3 left-3 z-20 pointer-events-auto animate-fade-in">
               <SatelliteInfo />
             </div>
           )}
