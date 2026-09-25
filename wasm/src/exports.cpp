@@ -31,6 +31,8 @@
 #include "zenith/ground_track.hpp"
 #include "zenith/monte_carlo.hpp"
 #include "zenith/coverage.hpp"
+#include "zenith/pass_predictor.hpp"
+#include "zenith/conjunction.hpp"
 
 using namespace emscripten;
 
@@ -113,6 +115,11 @@ val sgp4_get_elements(int handle, double jd) {
 void sgp4_clear() {
     g_propagators.clear();
     g_next_handle = 1;
+}
+
+/// Destroy a single propagator handle.
+void sgp4_destroy(int handle) {
+    g_propagators.erase(handle);
 }
 
 // =============================================================================
@@ -316,6 +323,102 @@ val generate_walker_js(double inc_rad, int total_sats, int num_planes,
 }
 
 // =============================================================================
+// Pass Predictor
+// =============================================================================
+
+/// Predict satellite passes over a ground station.
+/// Input: flat trajectory array [x1,y1,z1,vx1,vy1,vz1,jd1, ...]
+/// and station parameters.
+val predict_passes_js(val flat_trajectory,
+                     double station_lat_rad, double station_lon_rad,
+                     double station_alt_km, double elevation_mask_rad) {
+    int len = flat_trajectory["length"].as<int>();
+    int n = len / 7;
+    
+    std::vector<orbit::StateVector> trajectory;
+    trajectory.reserve(n);
+    for (int i = 0; i < n; ++i) {
+        orbit::StateVector sv;
+        sv.position.x = flat_trajectory[i * 7 + 0].as<double>();
+        sv.position.y = flat_trajectory[i * 7 + 1].as<double>();
+        sv.position.z = flat_trajectory[i * 7 + 2].as<double>();
+        sv.velocity.x = flat_trajectory[i * 7 + 3].as<double>();
+        sv.velocity.y = flat_trajectory[i * 7 + 4].as<double>();
+        sv.velocity.z = flat_trajectory[i * 7 + 5].as<double>();
+        sv.epoch = flat_trajectory[i * 7 + 6].as<double>();
+        trajectory.push_back(sv);
+    }
+    
+    orbit::GroundStation station;
+    station.latitude_rad = station_lat_rad;
+    station.longitude_rad = station_lon_rad;
+    station.altitude_km = station_alt_km;
+    station.elevation_mask_rad = elevation_mask_rad;
+    
+    std::vector<orbit::PassInfo> passes = orbit::predict_passes(station, trajectory);
+    
+    val result = val::array();
+    for (const auto& p : passes) {
+        val pass = val::object();
+        pass.set("start_jd", p.start_jd);
+        pass.set("end_jd", p.end_jd);
+        pass.set("max_elevation_rad", p.max_elevation_rad);
+        pass.set("duration_s", p.duration_s);
+        pass.set("min_range_km", p.min_range_km);
+        result.call<void>("push", pass);
+    }
+    return result;
+}
+
+// =============================================================================
+// Conjunction Screening (time-window)
+// =============================================================================
+
+/// Screen all satellite pairs for close approaches over a time window.
+/// Input: catalog of trajectories (array of flat trajectory arrays).
+val screen_conjunctions_js(val catalog, double screen_distance_km) {
+    int n_sats = catalog["length"].as<int>();
+    std::vector<std::vector<orbit::StateVector>> traj_catalog;
+    traj_catalog.reserve(n_sats);
+    
+    for (int s = 0; s < n_sats; ++s) {
+        val traj = catalog[s];
+        int len = traj["length"].as<int>();
+        int n = len / 7;
+        std::vector<orbit::StateVector> trajectory;
+        trajectory.reserve(n);
+        for (int i = 0; i < n; ++i) {
+            orbit::StateVector sv;
+            sv.position.x = traj[i * 7 + 0].as<double>();
+            sv.position.y = traj[i * 7 + 1].as<double>();
+            sv.position.z = traj[i * 7 + 2].as<double>();
+            sv.velocity.x = traj[i * 7 + 3].as<double>();
+            sv.velocity.y = traj[i * 7 + 4].as<double>();
+            sv.velocity.z = traj[i * 7 + 5].as<double>();
+            sv.epoch = traj[i * 7 + 6].as<double>();
+            trajectory.push_back(sv);
+        }
+        traj_catalog.push_back(trajectory);
+    }
+    
+    orbit::ConjunctionConfig config;
+    config.screen_distance_km = screen_distance_km;
+    
+    std::vector<orbit::ConjunctionEvent> events = orbit::screen_conjunctions(traj_catalog, config);
+    
+    val result = val::array();
+    for (const auto& evt : events) {
+        val e = val::object();
+        e.set("sat_id_1", evt.sat_id_1);
+        e.set("sat_id_2", evt.sat_id_2);
+        e.set("tca_jd", evt.tca_jd);
+        e.set("miss_distance_km", evt.miss_distance_km);
+        result.call<void>("push", e);
+    }
+    return result;
+}
+
+// =============================================================================
 // Embind Registration
 // =============================================================================
 
@@ -324,10 +427,13 @@ EMSCRIPTEN_BINDINGS(zenith) {
     function("sgp4_propagate", &sgp4_propagate);
     function("sgp4_get_elements", &sgp4_get_elements);
     function("sgp4_clear", &sgp4_clear);
+    function("sgp4_destroy", &sgp4_destroy);
     function("lambert_solve", &lambert_solve_js);
     function("hohmann_from_altitudes", &hohmann_from_altitudes_js);
     function("bielliptic_transfer", &bielliptic_transfer_js);
     function("compute_ground_track", &compute_ground_track_js);
     function("mc_propagate", &mc_propagate_js);
     function("generate_walker", &generate_walker_js);
+    function("predict_passes", &predict_passes_js);
+    function("screen_conjunctions", &screen_conjunctions_js);
 }

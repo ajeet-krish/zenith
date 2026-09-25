@@ -7,10 +7,15 @@ echo "Building Zenith WASM module..."
 PYTHON=""
 for candidate in python3.14 python3.13 python3.12 python3.11 python3.10; do
     if command -v "$candidate" &> /dev/null; then
-        PYTHON="$candidate"
+        PYTHON="$(command -v "$candidate")"
         break
     fi
 done
+
+if [ -z "$PYTHON" ]; then
+    echo "Error: Python 3.10+ required for Emscripten. Install via: brew install python@3.14"
+    exit 1
+fi
 
 # Check for Emscripten
 EMSCRIPTEN_DIR="${EMSCRIPTEN_DIR:-/opt/homebrew/Cellar/emscripten/6.0.9_1/libexec}"
@@ -20,15 +25,21 @@ if [ ! -f "$EMSCRIPTEN_DIR/emcc.py" ]; then
     exit 1
 fi
 
-if [ -z "$PYTHON" ]; then
-    echo "Error: Python 3.10+ required for Emscripten. Install via: brew install python@3.14"
-    exit 1
-fi
-
-echo "Using Python: $PYTHON ($(which $PYTHON))"
+echo "Using Python: $PYTHON ($($PYTHON --version))"
 echo "Emscripten: $EMSCRIPTEN_DIR"
 
-# LLVM bundled with Emscripten (has WASM backend)
+# Set up Python symlinks so em++/emcc find Python 3.10+ via env
+mkdir -p /tmp/emscripten-python-bin
+ln -sf "$PYTHON" /tmp/emscripten-python-bin/python3
+ln -sf "$PYTHON" /tmp/emscripten-python-bin/python
+
+# PATH must have our python3 FIRST for the entire build (cmake + make)
+export PATH="/tmp/emscripten-python-bin:$PATH"
+
+# Verify python3 is now 3.10+
+echo "Active python3: $(python3 --version) at $(which python3)"
+
+# LLVM bundled with Emscripten
 LLVM_DIR="$EMSCRIPTEN_DIR/llvm"
 
 # Create build directory
@@ -36,17 +47,13 @@ rm -rf build
 mkdir -p build
 
 # Build with Emscripten
-PATH="/tmp/emscripten-python-bin:$PATH" \
 LLVM="$LLVM_DIR" \
 $PYTHON "$EMSCRIPTEN_DIR/emcmake.py" cmake -B build -DCMAKE_BUILD_TYPE=Release
 
-# Cross-platform parallel build
+# Cross-platform parallel build (PATH carries through to em++ invocations)
 cmake --build build -j$(sysctl -n hw.ncpu 2>/dev/null || nproc 2>/dev/null || echo 4)
 
 # Copy output to public directory
-# Emscripten names output <target>.js and <target>.wasm, but we need:
-#   zenith.js        (JS glue, loaded via <script> tag)
-#   zenith.wasm.wasm (WASM binary, loaded by JS glue)
 mkdir -p ../public/wasm
 cp build/zenith.wasm.js ../public/wasm/zenith.js
 cp build/zenith.wasm.wasm ../public/wasm/zenith.wasm.wasm
