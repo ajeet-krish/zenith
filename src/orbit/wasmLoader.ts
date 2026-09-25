@@ -29,7 +29,7 @@ export async function initWasm(): Promise<boolean> {
     // Load the Emscripten JS glue file via script tag
     await new Promise<void>((resolve, reject) => {
       const script = document.createElement('script')
-      script.src = '/wasm/zenith.js'
+      script.src = `${import.meta.env.BASE_URL}wasm/zenith.js`
       script.onload = () => resolve()
       script.onerror = () => reject(new Error('Failed to load WASM script'))
       document.head.appendChild(script)

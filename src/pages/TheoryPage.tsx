@@ -90,7 +90,7 @@ export function TheoryPage() {
         </P>
         <div className="bg-card-surface border border-dust rounded p-4 my-4 text-xs font-mono">
           <a
-            href="https://github.com/AjeetSingh02/zenith-web"
+            href="https://github.com/ajeet-krish/zenith"
             target="_blank"
             rel="noopener noreferrer"
             className="text-neon-purple hover:text-neon-cyan transition-colors"
