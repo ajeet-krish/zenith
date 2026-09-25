@@ -5,6 +5,8 @@ import {
   sgp4Propagate,
   sgp4GetElements,
   sgp4Clear,
+  sgp4Destroy,
+  propagateSatellite,
   lambertSolveWasm,
 } from '../wasmLoader'
 import { ISS_TLE, HUBBLE_TLE } from '@/__tests__/fixtures/tle-fixtures'
@@ -282,6 +284,127 @@ describe('Edge cases', () => {
     expect(pos1).not.toBeNull()
     expect(pos2).not.toBeNull()
     // At least one coordinate should differ
+    const differs =
+      pos1!.x !== pos2!.x || pos1!.y !== pos2!.y || pos1!.z !== pos2!.z
+    expect(differs).toBe(true)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// sgp4Destroy
+// ---------------------------------------------------------------------------
+describe('sgp4Destroy', () => {
+  beforeEach(() => {
+    sgp4Clear()
+  })
+
+  it('removes handle so sgp4Propagate returns null', () => {
+    const handle = sgp4Init(ISS_TLE.line1, ISS_TLE.line2)!
+    expect(sgp4Propagate(handle, JD_J2000)).not.toBeNull()
+    sgp4Destroy(handle)
+    expect(sgp4Propagate(handle, JD_J2000)).toBeNull()
+  })
+
+  it('destroying non-existent handle is a no-op', () => {
+    // Should not throw
+    expect(() => sgp4Destroy(99999)).not.toThrow()
+  })
+
+  it('destroys one satellite while leaving others intact', () => {
+    const handleA = sgp4Init(ISS_TLE.line1, ISS_TLE.line2)!
+    const handleB = sgp4Init(HUBBLE_TLE.line1, HUBBLE_TLE.line2)!
+    expect(sgp4Propagate(handleA, JD_J2000)).not.toBeNull()
+    expect(sgp4Propagate(handleB, JD_J2000)).not.toBeNull()
+
+    sgp4Destroy(handleA)
+
+    expect(sgp4Propagate(handleA, JD_J2000)).toBeNull()
+    expect(sgp4Propagate(handleB, JD_J2000)).not.toBeNull()
+  })
+
+  it('double-destroy is safe', () => {
+    const handle = sgp4Init(ISS_TLE.line1, ISS_TLE.line2)!
+    sgp4Destroy(handle)
+    expect(() => sgp4Destroy(handle)).not.toThrow()
+    expect(sgp4Propagate(handle, JD_J2000)).toBeNull()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// propagateSatellite
+// ---------------------------------------------------------------------------
+describe('propagateSatellite', () => {
+  let handle: number
+
+  beforeEach(() => {
+    sgp4Clear()
+    handle = sgp4Init(ISS_TLE.line1, ISS_TLE.line2)!
+  })
+
+  it('with method=sgp4 returns valid position via TS fallback', () => {
+    const result = propagateSatellite(handle, JD_J2000, 'sgp4')
+    expect(result).not.toBeNull()
+    expect(result!.x).toBeTypeOf('number')
+    expect(result!.y).toBeTypeOf('number')
+    expect(result!.z).toBeTypeOf('number')
+    expect(Number.isFinite(result!.x)).toBe(true)
+  })
+
+  it('with method=kepler uses TS fallback directly', () => {
+    const result = propagateSatellite(handle, JD_J2000, 'kepler')
+    expect(result).not.toBeNull()
+    expect(result!.x).toBeTypeOf('number')
+    expect(Number.isFinite(result!.x)).toBe(true)
+    // Kepler result should have same order of magnitude as sgp4
+    const mag = Math.sqrt(result!.x ** 2 + result!.y ** 2 + result!.z ** 2)
+    expect(mag).toBeGreaterThan(6000)
+    expect(mag).toBeLessThan(8000)
+  })
+
+  it('with method=rk45 falls back to SGP4 (TS fallback)', () => {
+    const result = propagateSatellite(handle, JD_J2000, 'rk45')
+    expect(result).not.toBeNull()
+    const mag = Math.sqrt(result!.x ** 2 + result!.y ** 2 + result!.z ** 2)
+    expect(mag).toBeGreaterThan(6000)
+    expect(mag).toBeLessThan(8000)
+  })
+
+  it('with default method uses sgp4', () => {
+    const result = propagateSatellite(handle, JD_J2000)
+    expect(result).not.toBeNull()
+    const mag = Math.sqrt(result!.x ** 2 + result!.y ** 2 + result!.z ** 2)
+    expect(mag).toBeGreaterThan(6700)
+    expect(mag).toBeLessThan(7000)
+  })
+
+  it('handles null/invalid handle gracefully', () => {
+    const result = propagateSatellite(99999, JD_J2000, 'sgp4')
+    expect(result).toBeNull()
+  })
+
+  it('kepler method with invalid handle returns null', () => {
+    const result = propagateSatellite(99999, JD_J2000, 'kepler')
+    expect(result).toBeNull()
+  })
+
+  it('kepler and sgp4 produce similar positions for near-circular orbits', () => {
+    const sgp4Result = propagateSatellite(handle, JD_J2000, 'sgp4')
+    const keplerResult = propagateSatellite(handle, JD_J2000, 'kepler')
+    expect(sgp4Result).not.toBeNull()
+    expect(keplerResult).not.toBeNull()
+
+    // For near-circular ISS orbit, both should produce same position (no J2/drag in TS fallback)
+    // The TS sgp4_propagate_ts is used by both code paths, so results should be identical
+    expect(sgp4Result!.x).toBeCloseTo(keplerResult!.x, 6)
+    expect(sgp4Result!.y).toBeCloseTo(keplerResult!.y, 6)
+    expect(sgp4Result!.z).toBeCloseTo(keplerResult!.z, 6)
+  })
+
+  it('position changes over time for kepler method', () => {
+    const pos1 = propagateSatellite(handle, JD_J2000, 'kepler')
+    const pos2 = propagateSatellite(handle, JD_J2000 + 1, 'kepler')
+    expect(pos1).not.toBeNull()
+    expect(pos2).not.toBeNull()
     const differs =
       pos1!.x !== pos2!.x || pos1!.y !== pos2!.y || pos1!.z !== pos2!.z
     expect(differs).toBe(true)

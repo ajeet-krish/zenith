@@ -8,6 +8,7 @@ vi.mock('@/orbit/wasmLoader', () => ({
   sgp4Propagate: vi.fn(() => ({ x: 6781, y: 0, z: 0, vx: 0, vy: 7.669, vz: 0 })),
   sgp4GetElements: vi.fn(() => ({ a: 6781, e: 0.0007, i: 0.9, raan: 3.49, argp: 0.87, ta: 5.41 })),
   sgp4Destroy: vi.fn(),
+  sgp4Clear: vi.fn(),
 }))
 
 // Mock sampleTles so we can control what loadSampleSatellites processes

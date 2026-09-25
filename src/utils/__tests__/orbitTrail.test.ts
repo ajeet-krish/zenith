@@ -6,6 +6,8 @@ import { Vector3 } from 'three'
 vi.mock('@/orbit/wasmLoader', () => ({
   sgp4Propagate: vi.fn(),
   sgp4GetElements: vi.fn(),
+  sgp4Clear: vi.fn(),
+  sgp4Destroy: vi.fn(),
 }))
 
 import { sgp4Propagate, sgp4GetElements } from '@/orbit/wasmLoader'
