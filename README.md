@@ -1,16 +1,21 @@
-# Zenith Web: Browser-native satellite mission planner with real-time 3D visualization
+# Zenith: Browser-based satellite mission planner with real-time 3D visualization
 
 [![React 19](https://img.shields.io/badge/React-19-61dafb.svg?logo=react&logoColor=white)](https://react.dev/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7-3178c6.svg?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![WASM](https://img.shields.io/badge/WASM-Emscripten-654ff0.svg?logo=webassembly&logoColor=white)](https://emscripten.org/)
 
-Interactive satellite mission planner and orbital mechanics educational tool. Propagate orbits with SGP4, plan Hohmann transfers, screen conjunctions, run Monte Carlo analysis, and design Walker constellations, all in the browser.
+Zenith is an interactive satellite mission planner and orbital mechanics educational tool. Propagate orbits with SGP4, plan Hohmann transfers, screen conjunctions, run Monte Carlo analysis, and design Walker constellations, all in the browser.
+
+1. **Parse** real TLE data with NORAD checksum validation
+2. **Propagate** orbits using SGP4/SDP4 via a C++ WASM engine
+3. **Analyze** conjunctions, maneuver options, ground tracks, and constellation coverage
+4. **Visualize** everything in real-time 3D
 
 ---
 
 ## Demo
 
-![3D Orbit Viewer](docs/assets/images/application/3d-orbit-view.png)
+<!-- TODO: Add demo video/GIF here -->
 
 *Interactive 3D Earth with real-time satellite propagation. Load TLE data, track multiple satellites, and analyze orbital mechanics with mission planning tools.*
 
@@ -20,13 +25,6 @@ Interactive satellite mission planner and orbital mechanics educational tool. Pr
 
 Most orbital mechanics web demos stop at a static 3D globe with pre-computed orbits. Zenith Web runs the **full flight dynamics pipeline** in the browser:
 
-1. **Parse** real TLE data with NORAD checksum validation
-2. **Propagate** orbits using SGP4/SDP4 via a C++ WASM engine (with TypeScript fallback)
-3. **Analyze** conjunctions, maneuver options, ground tracks, and constellation coverage
-4. **Visualize** everything in real-time 3D with React Three Fiber
-
-The WASM backend is compiled from the same C++ headers as the [Zenith desktop app](https://github.com/ajeet/zenith-desktop), giving you operational-grade physics in a browser tab.
-
 ---
 
 ## Application Walkthrough
@@ -35,7 +33,7 @@ The WASM backend is compiled from the same C++ headers as the [Zenith desktop ap
 
 The main viewport renders a textured 3D Earth with orbit paths, satellite markers, and a starfield background. Satellites are rendered as cubesats with category-coded colors (LEO=cyan, MEO=green, GEO=orange, debris=red). Click any satellite to select it and view its orbital elements.
 
-![3D Earth View](docs/assets/images/application/3d-earth-view.png)
+<!-- TODO: Add 3D Earth view screenshot here -->
 
 *3D Earth with orbit paths and satellite markers. The left sidebar shows the satellite list with category grouping and visibility toggles.*
 
@@ -43,35 +41,43 @@ The main viewport renders a textured 3D Earth with orbit paths, satellite marker
 
 The left sidebar displays all loaded satellites grouped by orbit category. Add satellites via the TLE input modal, which validates NORAD checksums and extracts orbital elements. Pre-loaded sample satellites include ISS, Hubble, Starlink, GPS, GOES, and debris objects.
 
-![Satellite List](docs/assets/images/application/satellite-list.png)
+![Satellite List](docs/images/satellite_list.png)
 
 *Satellite list with category headers, visibility toggles, and the "+ Add TLE" button. Click a satellite to view its details and orbital elements.*
 
-### Time Controls
+![Satellite List with 3D Scene](docs/images/satellite_list_viz.png)
 
-Control the simulation time with play/pause, speed adjustment (0.1x to 100x), and step forward/backward. The current epoch is displayed as both Julian Date and UTC. Use keyboard shortcuts for quick control: Space (play/pause), R (reset), +/- (speed).
+*Satellite list alongside the 3D orbit visualization.*
 
-![Time Controls](docs/assets/images/application/time-controls.png)
+![TLE Input](docs/images/tle_input.png)
 
-*Time control panel: play/pause button, speed selector (1x, 2x, 5x, 10x, 50x, 100x), step controls, and reset. Displayed in the top-right corner of the 3D viewport.*
+*TLE input modal with NORAD checksum validation. Paste any Two-Line Element set to add a satellite.*
 
-### Propagation Panel
+### Propagation Controls
 
-Configure the propagation method and force models. The WASM engine supports full SGP4/SDP4 with J2 oblateness, atmospheric drag, solar radiation pressure, and third-body perturbations. A TypeScript Keplerian fallback is available when WASM is unavailable.
+Configure the propagation method and force models from the top control bar. The WASM engine supports full SGP4/SDP4 with J2 oblateness, atmospheric drag, solar radiation pressure, and third-body perturbations. A TypeScript Keplerian fallback is available when WASM is unavailable.
 
-![Propagation Panel](docs/assets/images/application/propagation-panel.png)
+![Propagation Panel](docs/images/porpagation_panel.png)
 
 *Propagation configuration: method selector (SGP4, Kepler, RK45), force model toggles (J2, Drag, SRP, 3rd Body), and current epoch display. WASM/TS status indicator shows which engine is active.*
+
+### Time Controls
+
+Control the simulation time with play/pause, speed adjustment (0.1x to 10x), and step forward/backward by one orbital period. The current epoch is displayed as UTC. Use keyboard shortcuts for quick control: Space (play/pause), R (reset), +/- (speed).
+
+<!-- TODO: Add time controls screenshot here -->
+
+*Time control bar: play/pause, step backward/forward, reset, and speed selector. Pinned to the top of the 3D viewport.*
 
 ### Hohmann Transfer Planning
 
 Plan orbital transfers by specifying initial and target altitudes. The maneuver panel computes the complete delta-V budget (departure burn, arrival burn, total) and transfer time. The transfer orbit renders as a dashed overlay in the 3D scene.
 
-![Maneuver Panel](docs/assets/images/application/maneuver-panel.png)
+![Maneuver Panel](docs/images/hohmann_panel.png)
 
 *Hohmann transfer configuration: initial altitude (400 km LEO), target altitude (35,786 km GEO). Results show Burn 1, Burn 2, total delta-V, and transfer time.*
 
-![Transfer Orbit View](docs/assets/images/application/transfer-orbit.png)
+<!-- TODO: Add transfer orbit 3D visualization screenshot here -->
 
 *3D view showing the original orbit (cyan) with the dashed Hohmann transfer orbit (orange) connecting departure and arrival points.*
 
@@ -79,7 +85,11 @@ Plan orbital transfers by specifying initial and target altitudes. The maneuver 
 
 Compute and visualize sub-satellite ground tracks on the 3D Earth. The ground track shows the satellite's footprint over time with anti-meridian handling (no visual artifacts at the date line). Configure propagation duration from 0.1 to 30 days.
 
-![Ground Track](docs/assets/images/application/ground-track.png)
+![Ground Track Panel](docs/images/ground_track_panel.png)
+
+*Ground track configuration: duration input, ON/OFF toggle, and compute button. Requires a satellite to be selected.*
+
+![Ground Track Visualization](docs/images/ground_track_viz.png)
 
 *Ground track rendered on the Earth surface showing the satellite's sub-satellite point over multiple orbits. Green polyline follows the orbital path.*
 
@@ -87,15 +97,19 @@ Compute and visualize sub-satellite ground tracks on the 3D Earth. The ground tr
 
 Screen all loaded satellite pairs for close approaches at the current epoch. The conjunction panel computes miss distances and classifies risk levels (CRITICAL < 1 km, HIGH < 5 km, MODERATE < 25 km, LOW > 25 km). Events are sorted by proximity.
 
-![Conjunction Panel](docs/assets/images/application/conjunction-panel.png)
+![Conjunction Panel](docs/images/conjunction_panel.png)
 
 *Conjunction screening results: risk level badges (CRITICAL/HIGH/MODERATE/LOW), miss distance in km, and satellite pair names. Configurable screening threshold.*
 
+![Conjunction Visualization](docs/images/conjunction_viz.png)
+
+*3D view showing conjunction markers between satellite pairs at close approach points.*
+
 ### Monte Carlo Uncertainty Propagation
 
-Propagate Gaussian initial condition uncertainty through orbital dynamics. Configure position/velocity standard deviations, sample count (100-10,000), propagation duration, and random seed. Results show mean state, per-axis standard deviations, and 3-sigma bounds.
+Propagate Gaussian initial condition uncertainty through orbital dynamics. Configure position/velocity standard deviations, sample count (100-5000), propagation duration, and random seed. Results show mean state, per-axis standard deviations, and 3-sigma bounds.
 
-![Monte Carlo Panel](docs/assets/images/application/monte-carlo-panel.png)
+<!-- TODO: Add Monte Carlo panel screenshot here -->
 
 *Monte Carlo configuration: number of samples, position sigma (km), velocity sigma (km/s), duration (days), and random seed. Toggle scatter cloud and uncertainty ellipsoid visualization.*
 
@@ -103,7 +117,7 @@ Propagate Gaussian initial condition uncertainty through orbital dynamics. Confi
 
 Design satellite constellations using the Walker Delta pattern (i:T/P/F). Configure total satellites, number of orbital planes, phasing factor, inclination, and altitude. Generate constellation states for coverage analysis.
 
-![Coverage Panel](docs/assets/images/application/coverage-panel.png)
+<!-- TODO: Add Walker Delta coverage panel screenshot here -->
 
 *Walker Delta constellation designer: total satellites (24), planes (6), inclination (55 deg), altitude (20,200 km GPS), and phasing factor. One-click constellation generation.*
 
@@ -165,7 +179,7 @@ npm run preview        # Preview the production build locally
 ### Run Tests
 
 ```bash
-npm run test           # Run all 210 tests
+npm run test           # Run all tests
 npm run test:watch     # Watch mode
 ```
 
@@ -213,6 +227,7 @@ zenith-web/
         TimeControls.tsx    # Play/pause/speed controls
         PropagationPanel.tsx # Method and force model config
         SatelliteInfo.tsx   # Selected satellite details
+        ResizeHandle.tsx    # Draggable panel divider
       analysis/         # Analysis tool panels
         AnalysisPanel.tsx   # Tabbed analysis container
         ManeuverPanel.tsx   # Hohmann transfer planner
@@ -292,6 +307,8 @@ All implementations are validated against published reference data.
 | **Frontend** | React 19, TypeScript 5.7, Three.js 0.170 |
 | **3D Rendering** | @react-three/fiber, @react-three/drei |
 | **State** | Zustand 5 |
+| **Routing** | React Router 7 |
+| **Math** | KaTeX (LaTeX rendering) |
 | **Styling** | Tailwind CSS 3 (Dracula dark theme) |
 | **Build** | Vite 6 |
 | **WASM** | Emscripten 6.0 (C++ to WebAssembly) |
@@ -303,7 +320,7 @@ All implementations are validated against published reference data.
 
 ## Testing
 
-210 tests across 12 test files covering:
+229 tests across 14 test files covering:
 
 | Module | Tests | Coverage |
 |--------|-------|----------|
@@ -331,7 +348,7 @@ For Flight Dynamics Analyst and GNC Engineer roles:
 - **WebAssembly integration**: C++ to WASM via Emscripten embind, JS/TS interop
 - **Full-stack development**: React 19, Three.js, Zustand, Vite, TypeScript
 - **Analysis skills**: Conjunction assessment, maneuver planning, Monte Carlo, constellation design
-- **Software engineering**: 210 tests, typed interfaces, component architecture
+- **Software engineering**: 229 tests, typed interfaces, component architecture
 - **Visualization**: Real-time 3D rendering, ground tracks, transfer orbits, uncertainty clouds
 
 ---

@@ -1,6 +1,7 @@
 node_modules/
 dist/
-docs/
+docs/*
+!docs/images/
 coverage/
 .DS_Store
 *.log
