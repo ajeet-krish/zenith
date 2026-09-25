@@ -49,7 +49,7 @@ function OrbitToolPage() {
   }, []);
 
   const handleRightResize = useCallback((delta: number) => {
-    setRightWidth((w) => Math.min(RIGHT_MAX, Math.max(RIGHT_MIN, w - delta)));
+    setRightWidth((w) => Math.min(RIGHT_MAX, Math.max(RIGHT_MIN, w + delta)));
   }, []);
 
   return (
