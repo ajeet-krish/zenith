@@ -20,7 +20,7 @@ export function AnalysisPanel() {
   const setActiveTool = useAnalysisStore((s) => s.setActiveTool);
 
   return (
-    <div className="bg-[#0d0d12] border border-dust w-72 min-w-0 shrink flex flex-col overflow-hidden">
+    <div className="bg-[#0d0d12] border border-dust w-full flex flex-col overflow-hidden">
       {/* Tool tabs */}
       <div className="flex border-b border-dust">
         {TOOLS.map((tool) => (

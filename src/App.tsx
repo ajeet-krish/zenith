@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, NavLink } from 'react-router-dom';
 import { initWasm } from '@/orbit/wasmLoader';
 import { OrbitScene } from '@/components/scene/OrbitScene';
@@ -9,10 +9,18 @@ import { SatelliteInfo } from '@/components/ui/SatelliteInfo';
 import { AnalysisPanel } from '@/components/analysis/AnalysisPanel';
 import { Starfield } from '@/components/ui/Starfield';
 import { OrbitLogo } from '@/components/ui/OrbitLogo';
+import { ResizeHandle } from '@/components/ui/ResizeHandle';
 import { TheoryPage } from '@/pages/TheoryPage';
 import { useMissionStore } from '@/store/useMissionStore';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { downloadMission } from '@/utils/missionExport';
+
+const LEFT_MIN = 160;
+const LEFT_MAX = 400;
+const RIGHT_MIN = 220;
+const RIGHT_MAX = 480;
+const LEFT_DEFAULT = 208;
+const RIGHT_DEFAULT = 288;
 
 /**
  * OrbitToolPage - the main 3D orbit visualization and analysis tool.
@@ -20,6 +28,8 @@ import { downloadMission } from '@/utils/missionExport';
 function OrbitToolPage() {
   const [loading, setLoading] = useState(true);
   const [showTleInput, setShowTleInput] = useState(false);
+  const [leftWidth, setLeftWidth] = useState(LEFT_DEFAULT);
+  const [rightWidth, setRightWidth] = useState(RIGHT_DEFAULT);
   const selectedSatelliteId = useMissionStore((s) => s.selectedSatelliteId);
 
   useKeyboardShortcuts();
@@ -32,12 +42,26 @@ function OrbitToolPage() {
     });
   }, []);
 
+  const handleLeftResize = useCallback((delta: number) => {
+    setLeftWidth((w) => Math.min(LEFT_MAX, Math.max(LEFT_MIN, w + delta)));
+  }, []);
+
+  const handleRightResize = useCallback((delta: number) => {
+    setRightWidth((w) => Math.min(RIGHT_MAX, Math.max(RIGHT_MIN, w - delta)));
+  }, []);
+
   return (
     <div className="flex-1 flex overflow-hidden">
       {/* Left sidebar: Satellite List */}
-      <aside className="w-52 shrink-0 border-r border-dust bg-[#0d0d12] z-10 flex flex-col">
+      <aside
+        className="shrink-0 border-r border-dust bg-[#0d0d12] z-10 flex flex-col"
+        style={{ width: leftWidth }}
+      >
         <SatelliteList onOpenTleInput={() => setShowTleInput(true)} />
       </aside>
+
+      {/* Left resize handle */}
+      <ResizeHandle onResize={handleLeftResize} />
 
       {/* 3D Scene with overlay panels */}
       <main className="flex-1 min-w-0 flex flex-col relative">
@@ -84,8 +108,16 @@ function OrbitToolPage() {
         </div>
       </main>
 
+      {/* Right resize handle */}
+      <ResizeHandle onResize={handleRightResize} direction="left" />
+
       {/* Right sidebar: Analysis Panel + Propagation */}
-      <AnalysisPanel />
+      <div
+        className="shrink-0 flex flex-col overflow-hidden"
+        style={{ width: rightWidth }}
+      >
+        <AnalysisPanel />
+      </div>
 
       {/* TLE Input Modal */}
       {showTleInput && (
