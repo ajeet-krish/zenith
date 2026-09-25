@@ -29,19 +29,19 @@ function BlockMath({ tex }: { tex: string }) {
 }
 
 /**
- * Reusable section heading.
+ * Reusable section heading with anchor id.
  */
-function H2({ children }: { children: React.ReactNode }) {
+function H2({ id, children }: { id: string; children: React.ReactNode }) {
   return (
-    <h2 className="text-lg font-mono font-bold text-white mt-10 mb-4 border-b border-dust pb-2">
+    <h2 id={id} className="text-lg font-mono font-bold text-white mt-10 mb-4 border-b border-dust pb-2 scroll-mt-4">
       {children}
     </h2>
   );
 }
 
-function H3({ children }: { children: React.ReactNode }) {
+function H3({ id, children }: { id?: string; children: React.ReactNode }) {
   return (
-    <h3 className="text-sm font-mono font-semibold text-neon-purple mt-6 mb-2">
+    <h3 id={id} className="text-sm font-mono font-semibold text-neon-purple mt-6 mb-2 scroll-mt-4">
       {children}
     </h3>
   );
@@ -60,12 +60,116 @@ function Note({ children }: { children: React.ReactNode }) {
 }
 
 /**
+ * Table of contents entry.
+ */
+interface TOCEntry {
+  id: string;
+  label: string;
+  sub?: { id: string; label: string }[];
+}
+
+const TOC: TOCEntry[] = [
+  { id: 'what-is-zenith', label: 'What is Zenith?' },
+  {
+    id: 'orbital-mechanics', label: '1. Orbital Mechanics',
+    sub: [
+      { id: 'two-body', label: 'Two-Body Problem' },
+      { id: 'keplerian-elements', label: 'Keplerian Elements' },
+      { id: 'vis-viva', label: 'Vis-Viva Equation' },
+      { id: 'orbital-period', label: 'Orbital Period' },
+    ],
+  },
+  {
+    id: 'propagation', label: '2. Propagation Methods',
+    sub: [
+      { id: 'sgp4', label: 'SGP4' },
+      { id: 'kepler-prop', label: 'Kepler' },
+      { id: 'rk45', label: 'RK45' },
+    ],
+  },
+  {
+    id: 'force-models', label: '3. Force Models',
+    sub: [
+      { id: 'j2', label: 'J2 Oblateness' },
+      { id: 'drag', label: 'Atmospheric Drag' },
+      { id: 'srp', label: 'Solar Radiation' },
+      { id: 'third-body', label: 'Third-Body Gravity' },
+    ],
+  },
+  {
+    id: 'tool-interface', label: '4. Tool Interface',
+    sub: [
+      { id: '3d-scene', label: '3D Scene' },
+      { id: 'left-sidebar', label: 'Left Sidebar' },
+      { id: 'right-sidebar', label: 'Right Sidebar' },
+      { id: 'overlay-panels', label: 'Overlay Panels' },
+    ],
+  },
+  {
+    id: 'analysis-tools', label: '5. Analysis Tools',
+    sub: [
+      { id: 'hohmann', label: 'Hohmann Transfer' },
+      { id: 'lambert', label: 'Lambert Solver' },
+      { id: 'ground-track', label: 'Ground Track' },
+      { id: 'conjunction', label: 'Conjunction Screening' },
+      { id: 'pass-predictor', label: 'Pass Predictor' },
+      { id: 'monte-carlo', label: 'Monte Carlo' },
+      { id: 'walker', label: 'Walker Constellation' },
+    ],
+  },
+];
+
+/**
+ * Table of Contents sidebar.
+ */
+function TableOfContents() {
+  return (
+    <nav className="w-56 shrink-0 border-r border-dust bg-[#0d0d12] overflow-y-auto py-6 px-4">
+      <div className="text-[10px] font-mono text-comment uppercase tracking-wider mb-4">
+        On this page
+      </div>
+      <ul className="space-y-1">
+        {TOC.map((entry) => (
+          <li key={entry.id}>
+            <a
+              href={`#${entry.id}`}
+              className="block text-[11px] font-mono text-space-300 hover:text-neon-purple transition-colors py-0.5"
+            >
+              {entry.label}
+            </a>
+            {entry.sub && (
+              <ul className="ml-3 mt-0.5 space-y-0.5 border-l border-dust pl-3">
+                {entry.sub.map((sub) => (
+                  <li key={sub.id}>
+                    <a
+                      href={`#${sub.id}`}
+                      className="block text-[10px] font-mono text-comment hover:text-neon-purple transition-colors py-0.5"
+                    >
+                      {sub.label}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </li>
+        ))}
+      </ul>
+    </nav>
+  );
+}
+
+/**
  * TheoryPage - Orbital mechanics reference and tool usage guide.
  */
 export function TheoryPage() {
   return (
-    <div className="flex-1 overflow-y-auto bg-void text-white">
-      <div className="max-w-3xl mx-auto px-6 py-10">
+    <div className="flex-1 flex overflow-hidden bg-void text-white">
+      {/* Table of Contents sidebar */}
+      <TableOfContents />
+
+      {/* Main content */}
+      <div className="flex-1 overflow-y-auto">
+        <div className="max-w-3xl mx-auto px-6 py-10">
         <h1 className="text-2xl font-mono font-bold text-white mb-2">
           Orbital Mechanics & Tool Guide
         </h1>
@@ -76,7 +180,7 @@ export function TheoryPage() {
         {/* ================================================================= */}
         {/* INTRO */}
         {/* ================================================================= */}
-        <H2>What is Zenith?</H2>
+          <H2 id="what-is-zenith">What is Zenith?</H2>
         <P>
           Zenith is an open-source, browser-based orbital mechanics toolkit for satellite mission
           analysis and visualization. It propagates satellite orbits in real time using a C++ WASM
@@ -104,9 +208,9 @@ export function TheoryPage() {
         {/* ================================================================= */}
         {/* 1. ORBITAL MECHANICS BASICS */}
         {/* ================================================================= */}
-        <H2>1. Orbital Mechanics Basics</H2>
+          <H2 id="orbital-mechanics">1. Orbital Mechanics Basics</H2>
 
-        <H3>The Two-Body Problem</H3>
+        <H3 id="two-body">The Two-Body Problem</H3>
         <P>
           Classical orbital mechanics begins with the two-body problem: predicting the motion of two
           point masses under their mutual gravitational attraction. For a satellite of mass{' '}
@@ -122,7 +226,7 @@ export function TheoryPage() {
           ).
         </P>
 
-        <H3>Keplerian Orbital Elements</H3>
+        <H3 id="keplerian-elements">Keplerian Orbital Elements</H3>
         <P>
           Any Keplerian orbit (two-body, no perturbations) is fully described by six classical
           elements:
@@ -153,7 +257,7 @@ export function TheoryPage() {
           </div>
         </div>
 
-        <H3>Vis-Viva Equation</H3>
+        <H3 id="vis-viva">Vis-Viva Equation</H3>
         <P>
           The vis-viva equation relates orbital velocity to position for any Keplerian orbit:
         </P>
@@ -164,7 +268,7 @@ export function TheoryPage() {
           maximum; at apogee (farthest point), velocity is minimum.
         </P>
 
-        <H3>Orbital Period</H3>
+        <H3 id="orbital-period">Orbital Period</H3>
         <P>
           Kepler's third law gives the orbital period from the semi-major axis:
         </P>
@@ -177,13 +281,13 @@ export function TheoryPage() {
         {/* ================================================================= */}
         {/* 2. PROPAGATION METHODS */}
         {/* ================================================================= */}
-        <H2>2. Propagation Methods</H2>
+          <H2 id="propagation">2. Propagation Methods</H2>
         <P>
           Orbital propagation is the process of predicting a satellite's position and velocity at a
           future time. Zenith offers three propagation methods with increasing fidelity.
         </P>
 
-        <H3>SGP4 (Simplified General Perturbations)</H3>
+        <H3 id="sgp4">SGP4 (Simplified General Perturbations)</H3>
         <P>
           SGP4 is the standard analytical propagator used by NORAD and the US Space Force for
           tracking cataloged objects. It uses Two-Line Element sets (TLEs) as input and accounts for
@@ -205,7 +309,7 @@ export function TheoryPage() {
           produce incorrect results.
         </Note>
 
-        <H3>Kepler (Two-Body)</H3>
+        <H3 id="kepler-prop">Kepler (Two-Body)</H3>
         <P>
           The Kepler propagator solves the exact two-body problem using Kepler's equation:
         </P>
@@ -227,7 +331,7 @@ export function TheoryPage() {
           available as a fallback when WASM is not loaded.
         </P>
 
-        <H3>RK45 (Numerical Integration)</H3>
+        <H3 id="rk45">RK45 (Numerical Integration)</H3>
         <P>
           The RK45 method uses a Runge-Kutta-Fehlberg adaptive integrator to solve the equations of
           motion numerically. Unlike analytical methods, it can incorporate arbitrary force models by
@@ -248,13 +352,13 @@ export function TheoryPage() {
         {/* ================================================================= */}
         {/* 3. FORCE MODELS */}
         {/* ================================================================= */}
-        <H2>3. Force Models</H2>
+          <H2 id="force-models">3. Force Models</H2>
         <P>
           Force models account for perturbations that deviate from ideal two-body motion. These can
           be toggled in the Propagation panel when using the RK45 integrator.
         </P>
 
-        <H3>J2 Oblateness Correction</H3>
+        <H3 id="j2">J2 Oblateness Correction</H3>
         <P>
           Earth is not a perfect sphere - it bulges at the equator due to its rotation. The J2
           coefficient captures the dominant oblateness effect. The additional acceleration is:
@@ -271,7 +375,7 @@ export function TheoryPage() {
           additional corrections when using the RK45 numerical integrator.
         </Note>
 
-        <H3>Atmospheric Drag</H3>
+        <H3 id="drag">Atmospheric Drag</H3>
         <P>
           For satellites in Low Earth Orbit (LEO, typically below 1000 km), atmospheric drag is the
           dominant perturbation. The drag acceleration is:
@@ -285,7 +389,7 @@ export function TheoryPage() {
           atmosphere. Drag causes orbit decay, reducing semi-major axis and eccentricity over time.
         </P>
 
-        <H3>Solar Radiation Pressure (SRP)</H3>
+        <H3 id="srp">Solar Radiation Pressure (SRP)</H3>
         <P>
           Photons from the Sun exert a small but continuous force on the satellite. The SRP
           acceleration is:
@@ -299,7 +403,7 @@ export function TheoryPage() {
           as those with large solar panels (MEO and GEO orbits).
         </P>
 
-        <H3>Third-Body Gravity (Lunar/Solar)</H3>
+        <H3 id="third-body">Third-Body Gravity (Lunar/Solar)</H3>
         <P>
           The gravitational influence of the Moon and Sun perturbs the orbit, especially for high-
           altitude satellites. The third-body acceleration from a perturbing body is:
@@ -315,9 +419,9 @@ export function TheoryPage() {
         {/* ================================================================= */}
         {/* 4. UNDERSTANDING THE TOOL INTERFACE */}
         {/* ================================================================= */}
-        <H2>4. Understanding the Tool Interface</H2>
+          <H2 id="tool-interface">4. Understanding the Tool Interface</H2>
 
-        <H3>The 3D Scene</H3>
+        <H3 id="3d-scene">The 3D Scene</H3>
         <P>
           The center of the screen displays a Three.js 3D visualization of the orbital environment.
           The Earth is rendered with a realistic texture, and satellites are shown as colored markers
@@ -331,7 +435,7 @@ export function TheoryPage() {
           <div><span className="text-neon-cyan">Click satellite</span> - Select and view details</div>
         </div>
 
-        <H3>Left Sidebar - Satellite List</H3>
+        <H3 id="left-sidebar">Left Sidebar - Satellite List</H3>
         <P>
           Shows all loaded satellites with their name, NORAD catalog number, and orbit category.
           Click a satellite to select it and view detailed orbital information. The visibility toggle
@@ -339,7 +443,7 @@ export function TheoryPage() {
           the TLE Input button to add satellites from Two-Line Element sets.
         </P>
 
-        <H3>Right Sidebar - Analysis Tools</H3>
+        <H3 id="right-sidebar">Right Sidebar - Analysis Tools</H3>
         <P>
           The right panel contains vertically stacked collapsible sections (modeled after the Zenith
           desktop layout). Multiple analysis sections can be open simultaneously:
@@ -368,7 +472,7 @@ export function TheoryPage() {
           </li>
         </ul>
 
-        <H3>Overlay Panels</H3>
+        <H3 id="overlay-panels">Overlay Panels</H3>
         <P>
           Floating panels appear on the 3D scene: Time Controls (top-right) for playback and speed
           control, and Satellite Info (top-left) showing Keplerian elements and state vectors when a
@@ -378,9 +482,9 @@ export function TheoryPage() {
         {/* ================================================================= */}
         {/* 5. ANALYSIS TOOLS */}
         {/* ================================================================= */}
-        <H2>5. Analysis Tools</H2>
+          <H2 id="analysis-tools">5. Analysis Tools</H2>
 
-        <H3>Hohmann Transfer</H3>
+        <H3 id="hohmann">Hohmann Transfer</H3>
         <P>
           The Hohmann transfer is the most fuel-efficient two-impulse maneuver for changing circular
           orbits in the same plane. It uses an elliptical transfer orbit tangent to both the initial
@@ -400,7 +504,7 @@ export function TheoryPage() {
           equation and Hohmann geometry to compute exact delta-V requirements.
         </P>
 
-        <H3>Lambert Solver</H3>
+        <H3 id="lambert">Lambert Solver</H3>
         <P>
           Lambert's problem determines the orbit connecting two position vectors in a given time of
           flight. Given departure position <InlineMath tex="\mathbf{r}_1" />, arrival position{' '}
@@ -417,7 +521,7 @@ export function TheoryPage() {
           The solver returns the velocity vectors at both endpoints and indicates convergence.
         </P>
 
-        <H3>Ground Track</H3>
+        <H3 id="ground-track">Ground Track</H3>
         <P>
           A ground track is the projection of a satellite's orbit onto Earth's surface. Because Earth
           rotates beneath the orbit, the ground track shifts westward each orbit. The shift depends
@@ -438,7 +542,7 @@ export function TheoryPage() {
           hide the ground track line on the 3D globe.
         </P>
 
-        <H3>Conjunction Screening</H3>
+        <H3 id="conjunction">Conjunction Screening</H3>
         <P>
           Conjunction screening checks for close approaches between all pairs of loaded satellites at
           the current epoch. The miss distance between each pair is computed as:
@@ -475,7 +579,7 @@ export function TheoryPage() {
           each event.
         </P>
 
-        <H3>Pass Predictor</H3>
+        <H3 id="pass-predictor">Pass Predictor</H3>
         <P>
           Predicts when a satellite will pass over a ground station. The tool propagates the
           satellite's orbit over a configurable time window and computes visibility from the ground
@@ -491,7 +595,7 @@ export function TheoryPage() {
           Set the prediction window duration (up to 30 days) and click Predict Passes.
         </P>
 
-        <H3>Monte Carlo Propagation</H3>
+        <H3 id="monte-carlo">Monte Carlo Propagation</H3>
         <P>
           Monte Carlo analysis quantifies uncertainty in orbit prediction by propagating many samples
           with randomized initial conditions. Starting from the satellite's current state, the tool:
@@ -535,7 +639,7 @@ export function TheoryPage() {
           grows over time and for collision probability estimation.
         </P>
 
-        <H3>Walker Delta Constellation</H3>
+        <H3 id="walker">Walker Delta Constellation</H3>
         <P>
           A Walker Delta constellation is a symmetric arrangement of satellites designed for global or
           regional coverage. It is specified by the notation{' '}
@@ -572,6 +676,7 @@ export function TheoryPage() {
           constellation design must also account for coverage requirements, inter-satellite link
           geometry, and launch vehicle constraints.
         </Note>
+        </div>
       </div>
     </div>
   );
