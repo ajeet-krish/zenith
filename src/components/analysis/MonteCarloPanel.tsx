@@ -41,14 +41,9 @@ export function MonteCarloPanel() {
     )
 
     if (result) {
-      // Map analysisLoader MonteCarloResult to store's MonteCarloResult type
       useAnalysisStore.setState({
         mcResult: {
-          meanState: {
-            position: { x: result.mean.x, y: result.mean.y, z: result.mean.z },
-            velocity: { x: result.mean.vx, y: result.mean.vy, z: result.mean.vz },
-            epoch: currentEpoch,
-          },
+          mean: result.mean,
           positionStddev: [
             result.positionStddev[0] ?? 0,
             result.positionStddev[1] ?? 0,

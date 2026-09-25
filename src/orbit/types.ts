@@ -2,6 +2,21 @@
 // Zenith Web - TypeScript Type Definitions
 // =============================================================================
 
+/** Sample TLE entry for demo/testing */
+export interface SampleTLE {
+  name: string
+  noradId: number
+  line1: string
+  line2: string
+  category: 'LEO' | 'MEO' | 'GEO' | 'HEO' | 'DEBRIS'
+}
+
+export type AnalysisTool = 'maneuver' | 'conjunction' | 'groundtrack' | 'montecarlo' | 'coverage'
+
+// =============================================================================
+// SGP4 Input (used by TLE parser)
+// =============================================================================
+
 export interface SGP4Input {
   epoch: number // Julian Date
   meanMotion: number // Revolutions per day
@@ -13,14 +28,9 @@ export interface SGP4Input {
   bstar: number // Drag term
 }
 
-export interface SGP4Output {
-  x: number // TEME position (km)
-  y: number
-  z: number
-  vx: number // TEME velocity (km/s)
-  vy: number
-  vz: number
-}
+// =============================================================================
+// State & Elements
+// =============================================================================
 
 export interface StateVector {
   position: { x: number; y: number; z: number }
@@ -28,132 +38,8 @@ export interface StateVector {
   epoch: number // Julian Date
 }
 
-export interface KeplerianElements {
-  a: number // Semi-major axis (km)
-  e: number // Eccentricity
-  i: number // Inclination (rad)
-  raan: number // RAAN (rad)
-  argp: number // Argument of perigee (rad)
-  ta: number // True anomaly (rad)
-  epoch: number // Julian Date
-}
-
-export interface TLEData {
-  norad_id: number
-  name: string
-  line1: string
-  line2: string
-  classification: 'U' | 'C' | 'S'
-  intl_designator: string
-  epoch_jd: number
-  mean_motion: number // rev/day
-  mean_motion_dot: number
-  mean_motion_ddot: number
-  bstar: number
-  inclination: number // deg
-  raan: number // deg
-  eccentricity: number
-  arg_perigee: number // deg
-  mean_anomaly: number // deg
-  revolution_number: number
-}
-
-export interface LambertInput {
-  r1: [number, number, number] // Position vector 1 (km)
-  r2: [number, number, number] // Position vector 2 (km)
-  dt: number // Time of flight (seconds)
-  mu: number // Gravitational parameter (km^3/s^2)
-}
-
-export interface LambertOutput {
-  v1: [number, number, number] // Departure velocity (km/s)
-  v2: [number, number, number] // Arrival velocity (km/s)
-  iterations: number
-  converged: boolean
-  a?: number // Semi-major axis (km), from WASM only
-  tof?: number // Time of flight used (s), from WASM only
-}
-
-/** Sample TLE entry for demo/testing */
-export interface SampleTLE {
-  name: string
-  noradId: number
-  line1: string
-  line2: string
-  category: 'LEO' | 'MEO' | 'GEO' | 'HEO' | 'DEBRIS'
-}
-
 // =============================================================================
-// Force model configuration
-// =============================================================================
-
-export interface ForceModelConfig {
-  useJ2: boolean
-  useJ4: boolean
-  useDrag: boolean
-  useSRP: boolean
-  useThirdBody: boolean
-}
-
-// =============================================================================
-// Propagation configuration
-// =============================================================================
-
-export interface PropagationConfig {
-  startEpoch: number // Julian Date
-  endEpoch: number // Julian Date
-  timeStep: number // seconds
-  forceModel: ForceModelConfig
-}
-
-// =============================================================================
-// Mission configuration
-// =============================================================================
-
-export interface MissionConfig {
-  name: string
-  description: string
-  targetOrbit: {
-    altitude: number // km
-    inclination: number // deg
-    eccentricity: number
-  }
-  transferType: 'hohmann' | 'lambert' | 'bielliptic'
-}
-
-// =============================================================================
-// WASM embind API types
-// =============================================================================
-
-/** SGP4 propagator handle result */
-export interface SGP4InitResult {
-  handle: number
-  success: boolean
-}
-
-/** Keplerian elements from SGP4 */
-export interface SGP4KeplerianElements {
-  a: number // Semi-major axis (km)
-  e: number // Eccentricity
-  i: number // Inclination (degrees)
-  raan: number // RAAN (degrees)
-  argp: number // Argument of perigee (degrees)
-  ta: number // True anomaly (degrees)
-}
-
-/** Lambert solver WASM result */
-export interface LambertWasmResult {
-  v1x: number
-  v1y: number
-  v1z: number
-  v2x: number
-  v2y: number
-  v2z: number
-  converged: boolean
-}
-
-// =============================================================================
-// Analysis Types
+// Analysis Types (canonical definitions - analysisLoader imports from here)
 // =============================================================================
 
 export interface HohmannResult {
@@ -175,17 +61,11 @@ export interface ConjunctionEvent {
   position2: { x: number; y: number; z: number }
 }
 
-export interface ConjunctionConfig {
-  screenDistanceKm: number
-  timeStepS: number
-  maxTimeSteps: number
-}
-
 export interface GroundTrackPoint {
-  latitudeRad: number
-  longitudeRad: number
-  altitudeKm: number
-  jdUtc: number
+  lat: number
+  lon: number
+  alt: number
+  jd: number
 }
 
 export interface MonteCarloConfig {
@@ -197,9 +77,9 @@ export interface MonteCarloConfig {
 }
 
 export interface MonteCarloResult {
-  meanState: StateVector
-  positionStddev: [number, number, number]
-  velocityStddev: [number, number, number]
+  mean: { x: number; y: number; z: number; vx: number; vy: number; vz: number }
+  positionStddev: number[]
+  velocityStddev: number[]
   samples: Array<{ x: number; y: number; z: number }>
 }
 
@@ -217,5 +97,3 @@ export interface CoverageResult {
   avgPassDurationS: number
   totalPasses: number
 }
-
-export type AnalysisTool = 'maneuver' | 'conjunction' | 'groundtrack' | 'montecarlo' | 'coverage'

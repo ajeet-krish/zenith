@@ -4,9 +4,8 @@ import type {
   ConjunctionEvent,
   MonteCarloResult,
   WalkerDeltaConfig,
-  CoverageResult,
 } from '@/orbit/types';
-import type { HohmannResult, GroundTrackPoint } from '@/orbit/analysisLoader';
+import type { HohmannResult, GroundTrackPoint } from '@/orbit/types';
 import { sgp4Propagate } from '@/orbit/wasmLoader';
 
 // =============================================================================
@@ -51,7 +50,6 @@ interface AnalysisState {
 
   // Coverage
   walkerConfig: WalkerDeltaConfig;
-  coverageResult: CoverageResult | null;
   setWalkerConfig: (config: Partial<WalkerDeltaConfig>) => void;
 }
 
@@ -136,7 +134,6 @@ export const useAnalysisStore = create<AnalysisState>((set, get) => ({
     phasingFactor: 1,
     altitudeKm: 20200,
   },
-  coverageResult: null,
   setWalkerConfig: (config) =>
     set((s) => ({
       walkerConfig: { ...s.walkerConfig, ...config },

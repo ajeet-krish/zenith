@@ -4,6 +4,7 @@
  */
 
 import { MU_EARTH, R_EARTH, DEG_TO_RAD, JD_J2000 } from './constants'
+import type { HohmannResult, GroundTrackPoint, MonteCarloConfig, MonteCarloResult, WalkerDeltaConfig } from './types'
 
 // Module-level state
 let wasmModule: any = null
@@ -18,14 +19,6 @@ export function setWasmModule(mod: any): void {
 // =============================================================================
 // Hohmann Transfer (TS fallback available)
 // =============================================================================
-
-export interface HohmannResult {
-  dv1: number
-  dv2: number
-  dvTotal: number
-  transferTimeS: number
-  aTransfer: number
-}
 
 /**
  * Compute Hohmann transfer from altitudes. Tries WASM first, falls back to TS.
@@ -121,13 +114,6 @@ export function biellipticTransfer(
 // Ground Track
 // =============================================================================
 
-export interface GroundTrackPoint {
-  lat: number
-  lon: number
-  alt: number
-  jd: number
-}
-
 /**
  * TypeScript fallback for ground track computation.
  * Converts ECI (TEME) positions to geodetic lat/lon using simple spherical Earth.
@@ -200,21 +186,6 @@ export function computeGroundTrack(flatTrajectory: number[]): GroundTrackPoint[]
 // Monte Carlo
 // =============================================================================
 
-export interface MonteCarloConfig {
-  nSamples: number
-  endTimeDays: number
-  positionStddevKm: number
-  velocityStddevKmS: number
-  seed: number
-}
-
-export interface MonteCarloResult {
-  mean: { x: number; y: number; z: number; vx: number; vy: number; vz: number }
-  positionStddev: number[]
-  velocityStddev: number[]
-  samples: Array<{ x: number; y: number; z: number }>
-}
-
 /**
  * Run Monte Carlo propagation. WASM only (too complex for TS fallback).
  */
@@ -242,14 +213,6 @@ export function mcPropagate(
 // =============================================================================
 // Walker Constellation
 // =============================================================================
-
-export interface WalkerDeltaConfig {
-  inclinationDeg: number
-  totalSats: number
-  numPlanes: number
-  phasingFactor: number
-  altitudeKm: number
-}
 
 export interface WalkerState {
   x: number; y: number; z: number
