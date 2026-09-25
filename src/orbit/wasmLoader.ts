@@ -290,6 +290,91 @@ export function sgp4Destroy(handle: number): void {
 }
 
 /**
+ * Propagate satellite using the specified method.
+ * Always falls back to SGP4 on failure.
+ */
+export function propagateSatellite(
+  handle: number,
+  jd: number,
+  method: 'sgp4' | 'kepler' | 'rk45' = 'sgp4'
+): { x: number; y: number; z: number; vx: number; vy: number; vz: number } | null {
+  // For Kepler: use TS Keplerian fallback directly (no J2, no drag)
+  if (method === 'kepler') {
+    const tsHandle = wasm_to_ts_handle.get(handle) ?? handle
+    const bucket = ts_propagators.get(tsHandle)
+    if (bucket) {
+      return sgp4_propagate_ts(bucket, jd)
+    }
+  }
+
+  // For SGP4 and RK45 (RK45 falls back to SGP4 until WASM binding is added):
+  // Always try WASM first, then TS fallback
+  if (wasmModule) {
+    try {
+      const result = wasmModule.sgp4_propagate(handle, jd)
+      if (result) return result
+    } catch (e) {
+      console.warn('WASM sgp4_propagate failed, trying TS fallback:', e)
+    }
+  }
+
+  const tsHandle = wasm_to_ts_handle.get(handle) ?? handle
+  const bucket = ts_propagators.get(tsHandle)
+  if (!bucket) return null
+  return sgp4_propagate_ts(bucket, jd)
+}
+
+/**
+ * Predict satellite passes over a ground station.
+ * Returns array of pass info objects with start/end times, elevation, etc.
+ */
+export function predictPasses(
+  trajectory: number[],
+  stationLatRad: number,
+  stationLonRad: number,
+  stationAltKm: number,
+  elevationMaskRad: number = 5 * Math.PI / 180
+): Array<{
+  start_jd: number;
+  end_jd: number;
+  max_elevation_rad: number;
+  duration_s: number;
+  min_range_km: number;
+}> | null {
+  if (!wasmModule) return null
+  try {
+    return wasmModule.predict_passes(
+      trajectory, stationLatRad, stationLonRad, stationAltKm, elevationMaskRad
+    )
+  } catch (e) {
+    console.warn('WASM predict_passes failed:', e)
+    return null
+  }
+}
+
+/**
+ * Screen satellite catalog for close approaches over time window.
+ * Returns array of conjunction events with TCA and miss distance.
+ */
+export function screenConjunctions(
+  catalog: number[][],
+  screenDistanceKm: number
+): Array<{
+  sat_id_1: number;
+  sat_id_2: number;
+  tca_jd: number;
+  miss_distance_km: number;
+}> | null {
+  if (!wasmModule) return null
+  try {
+    return wasmModule.screen_conjunctions(catalog, screenDistanceKm)
+  } catch (e) {
+    console.warn('WASM screen_conjunctions failed:', e)
+    return null
+  }
+}
+
+/**
  * Clear all satellite propagators from WASM memory.
  */
 export function sgp4Clear(): void {
