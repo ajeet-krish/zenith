@@ -11,7 +11,7 @@ export interface SampleTLE {
   category: 'LEO' | 'MEO' | 'GEO' | 'HEO' | 'DEBRIS'
 }
 
-export type AnalysisTool = 'maneuver' | 'conjunction' | 'groundtrack' | 'montecarlo' | 'coverage'
+export type AnalysisTool = 'maneuver' | 'lambert' | 'conjunction' | 'groundtrack' | 'passpredict' | 'montecarlo' | 'coverage'
 
 // =============================================================================
 // SGP4 Input (used by TLE parser)

@@ -1,15 +1,19 @@
 import { useAnalysisStore } from '@/store/useAnalysisStore';
 import { ManeuverPanel } from './ManeuverPanel';
+import { LambertPanel } from './LambertPanel';
 import { GroundTrackPanel } from './GroundTrackPanel';
 import { ConjunctionPanel } from './ConjunctionPanel';
+import { PassPredictorPanel } from './PassPredictorPanel';
 import { MonteCarloPanel } from './MonteCarloPanel';
 import { CoveragePanel } from './CoveragePanel';
 import type { AnalysisTool } from '@/orbit/types';
 
 const TOOLS: { id: AnalysisTool; label: string }[] = [
   { id: 'maneuver', label: 'Maneuver' },
+  { id: 'lambert', label: 'Lambert' },
   { id: 'groundtrack', label: 'Gnd Trk' },
   { id: 'conjunction', label: 'Conjunc' },
+  { id: 'passpredict', label: 'Passes' },
   { id: 'montecarlo', label: 'MC' },
   { id: 'coverage', label: 'Cov' },
 ];
@@ -40,8 +44,10 @@ export function AnalysisPanel() {
       {/* Tool content - fills available space */}
       <div className="flex-1 overflow-y-auto p-3">
         {activeTool === 'maneuver' && <ManeuverPanel />}
+        {activeTool === 'lambert' && <LambertPanel />}
         {activeTool === 'groundtrack' && <GroundTrackPanel />}
         {activeTool === 'conjunction' && <ConjunctionPanel />}
+        {activeTool === 'passpredict' && <PassPredictorPanel />}
         {activeTool === 'montecarlo' && <MonteCarloPanel />}
         {activeTool === 'coverage' && <CoveragePanel />}
         {!activeTool && (
