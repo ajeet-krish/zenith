@@ -1,16 +1,16 @@
 import { useMissionStore } from '@/store/useMissionStore';
 
-const PROPAGATION_METHODS: { value: 'sgp4' | 'kepler' | 'rk45'; label: string; desc: string }[] = [
-  { value: 'sgp4', label: 'SGP4', desc: 'Analytical' },
-  { value: 'kepler', label: 'Kepler', desc: 'Two-body' },
-  { value: 'rk45', label: 'RK45', desc: 'Numerical' },
+const PROPAGATION_METHODS: { value: 'sgp4' | 'kepler' | 'rk45'; label: string }[] = [
+  { value: 'sgp4', label: 'SGP4' },
+  { value: 'kepler', label: 'Kepler' },
+  { value: 'rk45', label: 'RK45' },
 ];
 
 const FORCE_MODELS: { key: 'j2' | 'drag' | 'srp' | 'thirdBody'; label: string }[] = [
   { key: 'j2', label: 'J2' },
   { key: 'drag', label: 'Drag' },
   { key: 'srp', label: 'SRP' },
-  { key: 'thirdBody', label: '3rd Body' },
+  { key: 'thirdBody', label: '3rd' },
 ];
 
 /**
@@ -21,8 +21,8 @@ function formatJdShort(jd: number): string {
 }
 
 /**
- * PropagationPanel - propagation method and force model configuration.
- * Rendered inside the right sidebar panel (AnalysisPanel).
+ * PropagationPanel - compact horizontal bar for propagation method and force model configuration.
+ * Sits above the TimeControls bar at the top of the scene.
  */
 export function PropagationPanel() {
   const propagationMethod = useMissionStore((s) => s.propagationMethod);
@@ -33,81 +33,79 @@ export function PropagationPanel() {
   const toggleForceModel = useMissionStore((s) => s.toggleForceModel);
 
   return (
-    <div className="p-3 space-y-3">
-      <div className="flex items-center gap-2">
-        <span className="text-[10px] font-mono text-comment uppercase tracking-wider">
-          PROPAGATION
-        </span>
-        <span
-          className={`text-[9px] font-mono px-1.5 py-0.5 rounded ${
-            wasmReady
-              ? 'text-neon-green bg-neon-green/10'
-              : 'text-neon-orange bg-neon-orange/10'
-          }`}
-        >
-          {wasmReady ? 'WASM' : 'TS'}
-        </span>
-      </div>
+    <div className="flex items-center gap-3 px-3 py-1.5 bg-black/60 backdrop-blur-sm border-b border-white/5 font-mono text-[11px]">
+      {/* Label + status */}
+      <span className="text-comment uppercase tracking-wider shrink-0">
+        PROP
+      </span>
+      <span
+        className={`text-[9px] px-1 py-0.5 rounded shrink-0 ${
+          wasmReady
+            ? 'text-neon-green bg-neon-green/10'
+            : 'text-neon-orange bg-neon-orange/10'
+        }`}
+      >
+        {wasmReady ? 'WASM' : 'TS'}
+      </span>
+
+      {/* Divider */}
+      <div className="w-px h-4 bg-white/10 shrink-0" />
 
       {/* Propagation method */}
-      <div>
-        <label className="block text-[9px] font-mono text-comment uppercase mb-1.5">
-          Method
-        </label>
-        <div className="flex gap-1">
-          {PROPAGATION_METHODS.map((m) => (
-            <button
-              key={m.value}
-              onClick={() => setPropagationMethod(m.value)}
-              className={`flex-1 px-2 py-1.5 rounded text-[10px] font-mono transition-colors ${
-                propagationMethod === m.value
-                  ? 'bg-neon-purple/20 text-neon-purple border border-neon-purple/30'
-                  : 'bg-white/5 text-comment hover:text-white hover:bg-white/10 border border-transparent'
-              }`}
-            >
-              <div>{m.label}</div>
-              <div className="text-[8px] opacity-60">{m.desc}</div>
-            </button>
-          ))}
-        </div>
+      <div className="flex items-center gap-0.5 shrink-0">
+        {PROPAGATION_METHODS.map((m) => (
+          <button
+            key={m.value}
+            onClick={() => setPropagationMethod(m.value)}
+            className={`px-2 py-0.5 rounded transition-colors ${
+              propagationMethod === m.value
+                ? 'bg-neon-purple/30 text-neon-purple'
+                : 'text-comment hover:text-white hover:bg-white/5'
+            }`}
+          >
+            {m.label}
+          </button>
+        ))}
       </div>
 
+      {/* Divider */}
+      <div className="w-px h-4 bg-white/10 shrink-0" />
+
       {/* Force models */}
-      <div>
-        <label className="block text-[9px] font-mono text-comment uppercase mb-1.5">
-          Force Models
-        </label>
-        <div className="flex gap-1">
-          {FORCE_MODELS.map((f) => (
-            <button
-              key={f.key}
-              onClick={() => toggleForceModel(f.key)}
-              className={`flex-1 px-1.5 py-1 rounded text-[10px] font-mono transition-colors ${
-                forceModels[f.key]
-                  ? 'bg-neon-cyan/20 text-neon-cyan border border-neon-cyan/30'
-                  : 'bg-white/5 text-comment hover:text-white hover:bg-white/10 border border-transparent'
-              }`}
-            >
-              {f.label}
-            </button>
-          ))}
-        </div>
+      <div className="flex items-center gap-0.5 shrink-0">
+        {FORCE_MODELS.map((f) => (
+          <button
+            key={f.key}
+            onClick={() => toggleForceModel(f.key)}
+            className={`px-1.5 py-0.5 rounded transition-colors ${
+              forceModels[f.key]
+                ? 'bg-neon-cyan/20 text-neon-cyan'
+                : 'text-comment hover:text-white hover:bg-white/5'
+            }`}
+          >
+            {f.label}
+          </button>
+        ))}
       </div>
 
       {/* WASM notice */}
       {!wasmReady && (
-        <div className="text-[9px] font-mono text-neon-orange/70 bg-neon-orange/5 px-2 py-1 rounded">
-          Force models and RK45 require WASM. Using Kepler fallback.
-        </div>
+        <>
+          <div className="w-px h-4 bg-white/10 shrink-0" />
+          <span className="text-neon-orange/70 shrink-0">
+            Force models + RK45 need WASM
+          </span>
+        </>
       )}
 
-      {/* Epoch display */}
-      <div className="flex items-center justify-between pt-1 border-t border-dust">
-        <span className="text-[9px] font-mono text-comment">Epoch JD</span>
-        <span className="text-[10px] font-mono text-space-400 tabular-nums">
-          {formatJdShort(currentEpoch)}
-        </span>
-      </div>
+      {/* Spacer */}
+      <div className="flex-1" />
+
+      {/* Epoch */}
+      <span className="text-comment shrink-0">JD</span>
+      <span className="text-space-400 tabular-nums shrink-0">
+        {formatJdShort(currentEpoch)}
+      </span>
     </div>
   );
 }

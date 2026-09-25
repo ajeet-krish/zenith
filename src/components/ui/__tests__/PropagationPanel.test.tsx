@@ -30,9 +30,9 @@ describe('PropagationPanel', () => {
     })
   })
 
-  it('renders the PROPAGATION panel label', () => {
+  it('renders the PROP label', () => {
     render(<PropagationPanel />)
-    expect(screen.getByText('PROPAGATION')).toBeInTheDocument()
+    expect(screen.getByText('PROP')).toBeInTheDocument()
   })
 
   it('renders propagation method buttons (SGP4, Kepler, RK45)', () => {
@@ -68,7 +68,7 @@ describe('PropagationPanel', () => {
     expect(screen.getByText('J2')).toBeInTheDocument()
     expect(screen.getByText('Drag')).toBeInTheDocument()
     expect(screen.getByText('SRP')).toBeInTheDocument()
-    expect(screen.getByText('3rd Body')).toBeInTheDocument()
+    expect(screen.getByText('3rd')).toBeInTheDocument()
   })
 
   it('clicking a force model button toggles it', async () => {
@@ -99,18 +99,8 @@ describe('PropagationPanel', () => {
     expect(screen.getByText(epochJD.toFixed(4))).toBeInTheDocument()
   })
 
-  it('renders the Method label', () => {
+  it('renders the JD label', () => {
     render(<PropagationPanel />)
-    expect(screen.getByText('Method')).toBeInTheDocument()
-  })
-
-  it('renders the Force Models label', () => {
-    render(<PropagationPanel />)
-    expect(screen.getByText('Force Models')).toBeInTheDocument()
-  })
-
-  it('renders the Epoch JD label', () => {
-    render(<PropagationPanel />)
-    expect(screen.getByText('Epoch JD')).toBeInTheDocument()
+    expect(screen.getByText('JD')).toBeInTheDocument()
   })
 })

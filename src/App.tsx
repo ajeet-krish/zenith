@@ -9,6 +9,7 @@ import { SatelliteInfo } from '@/components/ui/SatelliteInfo';
 import { AnalysisPanel } from '@/components/analysis/AnalysisPanel';
 import { Starfield } from '@/components/ui/Starfield';
 import { OrbitLogo } from '@/components/ui/OrbitLogo';
+import { PropagationPanel } from '@/components/ui/PropagationPanel';
 import { ResizeHandle } from '@/components/ui/ResizeHandle';
 import { TheoryPage } from '@/pages/TheoryPage';
 import { useMissionStore } from '@/store/useMissionStore';
@@ -65,8 +66,9 @@ function OrbitToolPage() {
 
       {/* 3D Scene with overlay panels */}
       <main className="flex-1 min-w-0 flex flex-col relative">
-        {/* Time Controls bar - pinned to top */}
+        {/* Propagation + Time Controls bar - pinned to top */}
         <div className="shrink-0 z-10">
+          <PropagationPanel />
           <TimeControls />
         </div>
 

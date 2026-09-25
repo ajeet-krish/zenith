@@ -4,7 +4,6 @@ import { GroundTrackPanel } from './GroundTrackPanel';
 import { ConjunctionPanel } from './ConjunctionPanel';
 import { MonteCarloPanel } from './MonteCarloPanel';
 import { CoveragePanel } from './CoveragePanel';
-import { PropagationPanel } from '@/components/ui/PropagationPanel';
 import type { AnalysisTool } from '@/orbit/types';
 
 const TOOLS: { id: AnalysisTool; label: string }[] = [
@@ -38,7 +37,7 @@ export function AnalysisPanel() {
         ))}
       </div>
 
-      {/* Tool content - flex-1 fills available space */}
+      {/* Tool content - fills available space */}
       <div className="flex-1 overflow-y-auto p-3">
         {activeTool === 'maneuver' && <ManeuverPanel />}
         {activeTool === 'groundtrack' && <GroundTrackPanel />}
@@ -50,11 +49,6 @@ export function AnalysisPanel() {
             Select an analysis tool above
           </div>
         )}
-      </div>
-
-      {/* Propagation Panel - pinned to bottom */}
-      <div className="border-t border-dust">
-        <PropagationPanel />
       </div>
     </div>
   );
