@@ -66,17 +66,20 @@ export function OrbitScene() {
         {satellites
           .filter((sat) => sat.visible)
           .map((sat) => {
-            const trail = orbitTrails.get(sat.id) ?? [];
+            const trail = orbitTrails.get(sat.id);
+            const positions = trail?.positions ?? [];
+            const colors = trail?.colors;
             const isSelected = selectedId === sat.id;
 
             return (
               <group key={sat.id}>
-                {/* Orbit path */}
+                {/* Orbit path with velocity color gradient */}
                 <OrbitPath
-                  positions={trail}
+                  positions={positions}
                   color={sat.color}
                   opacity={0.4}
                   isSelected={isSelected}
+                  vertexColors={colors}
                 />
 
                 {/* Satellite marker */}
