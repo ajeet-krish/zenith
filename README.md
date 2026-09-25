@@ -1,8 +1,7 @@
 # Zenith: Browser-based satellite mission planner with real-time 3D visualization
 
 [![React 19](https://img.shields.io/badge/React-19-61dafb.svg?logo=react&logoColor=white)](https://react.dev/)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.7-3178c6.svg?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![WASM](https://img.shields.io/badge/WASM-Emscripten-654ff0.svg?logo=webassembly&logoColor=white)](https://emscripten.org/)
+[![C++](https://img.shields.io/badge/C%2B%2B-20-00599C.svg?logo=cplusplus&logoColor=white)](https://isocpp.org/)
 
 Zenith is an interactive satellite mission planner and orbital mechanics educational tool. Propagate orbits with SGP4, plan Hohmann transfers, screen conjunctions, run Monte Carlo analysis, and design Walker constellations, all in the browser.
 
