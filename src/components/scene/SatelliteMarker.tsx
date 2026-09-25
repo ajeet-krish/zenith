@@ -4,13 +4,19 @@ import { Html } from '@react-three/drei';
 import type { Group } from 'three';
 import * as THREE from 'three';
 import { useMissionStore } from '@/store/useMissionStore';
-import { getSatellitePosition } from '@/utils/orbitTrail';
+import { sgp4Propagate } from '@/orbit/wasmLoader';
+
+/**
+ * Throttle interval in seconds. Satellite positions are propagated at 10Hz
+ * instead of 60fps. Between updates, position is interpolated using velocity.
+ */
+const PROPAGATION_INTERVAL = 0.1;
 
 /**
  * SatelliteMarker - renders a satellite cubesat with label in the scene.
  *
- * Position updates every frame from WASM/TS propagation.
- * Clicking a marker selects that satellite.
+ * Position updates at 10Hz via propagation, with linear interpolation
+ * between updates for smooth visual motion. Clicking selects the satellite.
  */
 export function SatelliteMarker({
   handle,
@@ -28,13 +34,50 @@ export function SatelliteMarker({
   const groupRef = useRef<Group>(null);
   const selectSatellite = useMissionStore((s) => s.selectSatellite);
 
-  // Update position each frame
-  useFrame(() => {
+  // Interpolation state
+  const lastPosRef = useRef(new THREE.Vector3());
+  const lastVelRef = useRef(new THREE.Vector3());
+  const lastJdRef = useRef(0);
+  const accumRef = useRef(0);
+
+  // Update position each frame with throttling + interpolation
+  useFrame((_, delta) => {
     if (!groupRef.current) return;
-    const jd = useMissionStore.getState().currentEpoch;
-    const pos = getSatellitePosition(handle, jd);
-    if (pos) {
-      groupRef.current.position.copy(pos);
+
+    accumRef.current += delta;
+
+    // Only propagate at 10Hz intervals
+    if (accumRef.current >= PROPAGATION_INTERVAL) {
+      accumRef.current = 0;
+      const jd = useMissionStore.getState().currentEpoch;
+      try {
+        const result = sgp4Propagate(handle, jd);
+        if (result) {
+          const SCALE = 1000;
+          const pos = new THREE.Vector3(
+            result.x / SCALE,
+            result.z / SCALE,
+            -result.y / SCALE
+          );
+          const vel = new THREE.Vector3(
+            result.vx / SCALE,
+            result.vz / SCALE,
+            -result.vy / SCALE
+          );
+          lastPosRef.current.copy(pos);
+          lastVelRef.current.copy(vel);
+          lastJdRef.current = jd;
+          groupRef.current.position.copy(pos);
+        }
+      } catch {
+        // WASM propagation failed, keep interpolated position
+      }
+    } else if (lastJdRef.current > 0) {
+      // Interpolate between propagation updates using velocity
+      const dt = delta;
+      groupRef.current.position.copy(lastPosRef.current);
+      groupRef.current.position.addScaledVector(lastVelRef.current, dt);
+      lastPosRef.current.copy(groupRef.current.position);
     }
   });
 
