@@ -156,10 +156,12 @@ function App() {
         </header>
 
         {/* Routes */}
-        <Routes>
-          <Route path="/" element={<OrbitToolPage />} />
-          <Route path="/theory" element={<TheoryPage />} />
-        </Routes>
+        <div className="flex-1 flex overflow-hidden">
+          <Routes>
+            <Route path="/" element={<OrbitToolPage />} />
+            <Route path="/theory" element={<TheoryPage />} />
+          </Routes>
+        </div>
       </div>
     </BrowserRouter>
   );

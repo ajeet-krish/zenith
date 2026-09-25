@@ -64,7 +64,7 @@ function Note({ children }: { children: React.ReactNode }) {
  */
 export function TheoryPage() {
   return (
-    <div className="min-h-screen bg-void text-white">
+    <div className="flex-1 overflow-y-auto bg-void text-white">
       <div className="max-w-3xl mx-auto px-6 py-10">
         <h1 className="text-2xl font-mono font-bold text-white mb-2">
           Orbital Mechanics & Tool Guide
@@ -72,6 +72,33 @@ export function TheoryPage() {
         <p className="text-sm font-mono text-comment mb-8">
           A reference for the propagation methods, force models, and analysis tools in Zenith.
         </p>
+
+        {/* ================================================================= */}
+        {/* INTRO */}
+        {/* ================================================================= */}
+        <H2>What is Zenith?</H2>
+        <P>
+          Zenith is an open-source, browser-based orbital mechanics toolkit for satellite mission
+          analysis and visualization. It propagates satellite orbits in real time using a C++ WASM
+          backend (with a pure TypeScript fallback), renders them in an interactive 3D scene, and
+          provides a suite of analysis tools for mission planning.
+        </P>
+        <P>
+          You can load satellites from Two-Line Element sets, visualize their orbits around Earth,
+          compute Hohmann transfers, generate ground tracks, screen for conjunctions, run Monte Carlo
+          uncertainty analyses, and design Walker Delta constellations, all from your browser.
+        </P>
+        <div className="bg-card-surface border border-dust rounded p-4 my-4 text-xs font-mono">
+          <a
+            href="https://github.com/AjeetSingh02/zenith-web"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-neon-purple hover:text-neon-cyan transition-colors"
+          >
+            github.com/AjeetSingh02/zenith-web
+          </a>
+          <span className="text-comment ml-2">- source code, issues, and contributions</span>
+        </div>
 
         {/* ================================================================= */}
         {/* 1. ORBITAL MECHANICS BASICS */}
