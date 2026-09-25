@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { SAMPLE_TLES } from '@/orbit/sampleTles';
-import { sgp4Init } from '@/orbit/wasmLoader';
+import { sgp4Init, sgp4Destroy } from '@/orbit/wasmLoader';
 import type { SampleTLE } from '@/orbit/types';
 
 // =============================================================================
@@ -136,6 +136,11 @@ export const useMissionStore = create<MissionState>((set, get) => ({
   },
 
   removeSatellite: (id) => {
+    const state = get();
+    const sat = state.satellites.find((s) => s.id === id);
+    if (sat?.handle != null) {
+      sgp4Destroy(sat.handle);
+    }
     set((state) => ({
       satellites: state.satellites.filter((s) => s.id !== id),
       selectedSatelliteId:

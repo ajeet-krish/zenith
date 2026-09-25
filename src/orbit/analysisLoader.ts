@@ -262,9 +262,6 @@ export interface WalkerState {
  * Generates evenly distributed satellites in circular orbits.
  */
 function generateWalkerTS(config: WalkerDeltaConfig, jdEpoch: number): WalkerState[] {
-  const R_EARTH = 6378.137
-  const MU_EARTH = 398600.4418
-
   const a = R_EARTH + config.altitudeKm
   const inc = config.inclinationDeg * Math.PI / 180
 

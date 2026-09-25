@@ -8,6 +8,7 @@ vi.mock('@/orbit/wasmLoader', () => ({
   sgp4Propagate: vi.fn(),
   sgp4GetElements: vi.fn(),
   sgp4Clear: vi.fn(),
+  sgp4Destroy: vi.fn(),
 }))
 
 beforeEach(() => {

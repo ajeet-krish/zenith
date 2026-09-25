@@ -33,7 +33,7 @@ export function ConjunctionPanel() {
     setScreening(true)
 
     // Yield to React so "Screening..." renders before blocking computation
-    requestAnimationFrame(() => {
+    setTimeout(() => {
       const found: ConjunctionEvent[] = []
       const visibleSats = satellites.filter((s) => s.visible && s.handle != null)
 

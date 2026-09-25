@@ -268,6 +268,28 @@ export function lambertSolveWasm(
 }
 
 /**
+ * Destroy a single satellite propagator and free its resources.
+ */
+export function sgp4Destroy(handle: number): void {
+  // Clean up WASM handle
+  if (wasmModule) {
+    try {
+      wasmModule.sgp4_destroy(handle)
+    } catch {
+      /* ignore - handle may not exist in WASM */
+    }
+  }
+  // Clean up TS fallback handle
+  const tsHandle = wasm_to_ts_handle.get(handle)
+  if (tsHandle !== undefined) {
+    ts_propagators.delete(tsHandle)
+    wasm_to_ts_handle.delete(handle)
+  } else {
+    ts_propagators.delete(handle)
+  }
+}
+
+/**
  * Clear all satellite propagators from WASM memory.
  */
 export function sgp4Clear(): void {
