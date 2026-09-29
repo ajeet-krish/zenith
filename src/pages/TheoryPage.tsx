@@ -108,9 +108,10 @@ const TOC: TOCEntry[] = [
   {
     id: 'analysis-tools', label: '5. Analysis Tools',
     sub: [
-      { id: 'hohmann', label: 'Hohmann Transfer' },
+      { id: 'maneuver', label: 'Maneuver Planning' },
       { id: 'lambert', label: 'Lambert Solver' },
       { id: 'ground-track', label: 'Ground Track' },
+      { id: 'eclipse', label: 'Eclipse/Shadow' },
       { id: 'conjunction', label: 'Conjunction Screening' },
       { id: 'pass-predictor', label: 'Pass Predictor' },
       { id: 'monte-carlo', label: 'Monte Carlo' },
@@ -190,8 +191,9 @@ export function TheoryPage() {
         <P>
           You can load satellites from Two-Line Element sets, visualize their orbits around Earth,
           solve Lambert problems, predict ground station passes, compute Hohmann transfers, generate
-          ground tracks, screen for conjunctions over time windows, run Monte Carlo uncertainty
-          analyses, and design Walker Delta constellations, all from your browser.
+          ground tracks, analyze eclipse and shadow events, screen for conjunctions over time
+          windows, run Monte Carlo uncertainty analyses, and design Walker Delta constellations, all
+          from your browser.
         </P>
         <div className="bg-card-surface border border-dust rounded p-4 my-4 text-xs font-mono">
           <a
@@ -459,6 +461,9 @@ export function TheoryPage() {
             <span className="text-neon-purple">Ground Track</span> - Sub-satellite point visualization
           </li>
           <li>
+            <span className="text-neon-purple">Eclipse/Shadow</span> - Solar eclipse and shadow event analysis
+          </li>
+          <li>
             <span className="text-neon-purple">Conjunction</span> - Single-epoch and time-window screening
           </li>
           <li>
@@ -484,7 +489,13 @@ export function TheoryPage() {
         {/* ================================================================= */}
           <H2 id="analysis-tools">5. Analysis Tools</H2>
 
-        <H3 id="hohmann">Hohmann Transfer</H3>
+        <H3 id="maneuver">Maneuver Planning</H3>
+        <P>
+          The Maneuver Planning tool provides four sub-tabs for computing orbital maneuver delta-V
+          budgets and comparing transfer strategies.
+        </P>
+
+        <H3>Hohmann Transfer</H3>
         <P>
           The Hohmann transfer is the most fuel-efficient two-impulse maneuver for changing circular
           orbits in the same plane. It uses an elliptical transfer orbit tangent to both the initial
@@ -500,8 +511,56 @@ export function TheoryPage() {
         <BlockMath tex="t_{\text{transfer}} = \pi\sqrt{\frac{(r_1+r_2)^3}{8\mu}}" />
         <P>
           Enter the initial and target altitudes (in km above Earth's surface) and click Compute
-          Transfer to see the burn magnitudes and transfer duration. The tool uses the vis-viva
-          equation and Hohmann geometry to compute exact delta-V requirements.
+          Transfer to see the burn magnitudes and transfer duration.
+        </P>
+
+        <H3>Plane Change</H3>
+        <P>
+          The Plane Change maneuver combines a Hohmann transfer with an inclination change, computing
+          the total delta-V budget for simultaneous altitude and plane changes. The combined velocity
+          change is:
+        </P>
+        <BlockMath tex="\Delta v = \sqrt{\Delta v_{\text{Hohmann}}^2 + \Delta v_{\text{plane}}^2 + 2\,\Delta v_{\text{Hohmann}}\,\Delta v_{\text{plane}}\cos\theta}" />
+        <P>
+          where <InlineMath tex="\Delta v_{\text{plane}} = 2v\sin(\Delta i / 2)" /> is the
+          plane-change component and <InlineMath tex="\Delta i" /> is the inclination change.
+          Performing the plane change at the point of lowest velocity (apogee for raising orbits)
+          minimizes the total delta-V.
+        </P>
+        <P>
+          Enter the initial and target altitudes and the desired inclination change (in degrees). The
+          tool reports the Hohmann component, plane-change component, and combined delta-V.
+        </P>
+
+        <H3>Phasing</H3>
+        <P>
+          Phasing orbits are used to close a phase angle gap between two satellites in the same orbit.
+          By temporarily lowering or raising the orbit, the chaser satellite adjusts its period to
+          catch up (or fall back) to the target. The phasing orbit semi-major axis is:
+        </P>
+        <BlockMath tex="a_{\text{phase}} = \left(\frac{T_{\text{phase}}^2\,\mu}{4\pi^2}\right)^{1/3}" />
+        <P>
+          where the phasing period <InlineMath tex="T_{\text{phase}}" /> is chosen so that after a
+          specified number of revolutions, the chaser has traversed exactly the required phase angle.
+          The delta-V is the cost of entering and exiting the phasing orbit.
+        </P>
+        <P>
+          Enter the orbit altitude, phase angle (in degrees), and number of periods to phase over.
+          The tool computes the phasing orbit parameters, total delta-V, and time to complete the
+          maneuver.
+        </P>
+
+        <H3>Comparison (Hohmann vs Bi-Elliptic)</H3>
+        <P>
+          The bi-elliptic transfer uses three impulses through an intermediate orbit. While it
+          requires more delta-V for most cases, it becomes more efficient than Hohmann when the
+          orbit ratio exceeds approximately 11.94:
+        </P>
+        <BlockMath tex="\frac{r_{\text{target}}}{r_{\text{initial}}} > 11.94" />
+        <P>
+          The tool computes both Hohmann and bi-elliptic delta-V budgets and transfer times, then
+          reports which is more efficient. Enter an intermediate radius (for the bi-elliptic apoapsis)
+          and click Compare to see the side-by-side results.
         </P>
 
         <H3 id="lambert">Lambert Solver</H3>
@@ -540,6 +599,60 @@ export function TheoryPage() {
         <P>
           Set the duration in days and click Compute Ground Track. Toggle the ON/OFF switch to show or
           hide the ground track line on the 3D globe.
+        </P>
+
+        <H3 id="eclipse">Eclipse/Shadow Analysis</H3>
+        <P>
+          Eclipse analysis determines when a satellite enters Earth's shadow cone during its orbit.
+          When the satellite is in eclipse, it receives no solar illumination, which affects power
+          generation, thermal balance, and optical sensor operations. The tool propagates the orbit
+          over a configurable duration and checks the shadow condition at each time step.
+        </P>
+        <P>
+          The shadow model uses a cylindrical approximation. At each epoch, the Sun's position is
+          computed from the Julian date using an analytical solar ephemeris (accurate to about 1
+          degree). The satellite is in eclipse when two conditions hold:
+        </P>
+        <ol className="list-decimal list-inside text-sm font-mono text-space-300 mb-3 space-y-1">
+          <li>
+            The satellite is on the opposite side of Earth from the Sun (negative projection onto
+            the Sun-Earth line)
+          </li>
+          <li>
+            The satellite's perpendicular distance from the Sun-Earth line is less than Earth's
+            equatorial radius (<InlineMath tex="R_E = 6378.137" /> km)
+          </li>
+        </ol>
+        <P>
+          This is an umbra-only model (no penumbra), meaning it assumes the Sun is a point source
+          and the shadow has a sharp boundary. In reality, the Sun's finite angular size creates a
+          penumbral region where only a fraction of the solar disk is blocked, but the cylindrical
+          model is a standard approximation for LEO and MEO mission planning.
+        </P>
+        <P>
+          Set the duration in days and click Compute Eclipse. The tool reports:
+        </P>
+        <div className="bg-card-surface border border-dust rounded p-4 my-4 space-y-1 text-xs font-mono">
+          <div>
+            <span className="text-neon-cyan">Event count</span> - Total number of eclipse entry/exit
+            events during the window
+          </div>
+          <div>
+            <span className="text-neon-cyan">Avg duration</span> - Mean eclipse duration across all
+            events
+          </div>
+          <div>
+            <span className="text-neon-cyan">Max/Min</span> - Longest and shortest eclipse events
+          </div>
+          <div>
+            <span className="text-neon-purple">Eclipse fraction</span> - Fraction of total time spent
+            in eclipse (0 to 1)
+          </div>
+        </div>
+        <P>
+          Individual events are listed with entry and exit times (UTC) and duration. For typical LEO
+          orbits, eclipse durations are around 30-35 minutes per orbit. Higher altitude orbits (MEO,
+          GEO) spend a larger fraction of time in eclipse around the equinoxes.
         </P>
 
         <H3 id="conjunction">Conjunction Screening</H3>

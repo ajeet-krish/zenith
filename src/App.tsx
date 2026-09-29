@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { BrowserRouter, Routes, Route, NavLink } from 'react-router-dom';
+import { HashRouter, Routes, Route, NavLink } from 'react-router-dom';
 import { initWasm } from '@/orbit/wasmLoader';
 import { OrbitScene } from '@/components/scene/OrbitScene';
 import { TimeControls } from '@/components/ui/TimeControls';
@@ -142,7 +142,7 @@ function App() {
   const wasmReady = useMissionStore((s) => s.wasmReady);
 
   return (
-    <BrowserRouter>
+    <HashRouter>
       <div className="h-screen w-screen flex flex-col bg-void overflow-hidden">
         <Starfield />
 
@@ -209,7 +209,7 @@ function App() {
           </Routes>
         </div>
       </div>
-    </BrowserRouter>
+    </HashRouter>
   );
 }
 
