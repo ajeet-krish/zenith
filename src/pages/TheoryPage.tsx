@@ -124,6 +124,11 @@ const TOC: TOCEntry[] = [
  * Table of Contents sidebar.
  */
 function TableOfContents() {
+  const handleClick = (e: React.MouseEvent<HTMLAnchorElement>, id: string) => {
+    e.preventDefault();
+    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
   return (
     <nav className="w-56 shrink-0 border-r border-dust bg-[#0d0d12] overflow-y-auto py-6 px-4">
       <div className="text-[10px] font-mono text-comment uppercase tracking-wider mb-4">
@@ -134,6 +139,7 @@ function TableOfContents() {
           <li key={entry.id}>
             <a
               href={`#${entry.id}`}
+              onClick={(e) => handleClick(e, entry.id)}
               className="block text-[11px] font-mono text-space-300 hover:text-neon-purple transition-colors py-0.5"
             >
               {entry.label}
@@ -144,6 +150,7 @@ function TableOfContents() {
                   <li key={sub.id}>
                     <a
                       href={`#${sub.id}`}
+                      onClick={(e) => handleClick(e, sub.id)}
                       className="block text-[10px] font-mono text-comment hover:text-neon-purple transition-colors py-0.5"
                     >
                       {sub.label}

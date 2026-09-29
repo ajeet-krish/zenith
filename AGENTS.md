@@ -4,8 +4,8 @@
 
 ```bash
 npm run dev          # Vite dev server at localhost:5173
-npm run build        # tsc -b && vite build
-npm run test         # vitest run (232 tests, ~1.5s)
+npm run build        # tsc -p tsconfig.build.json --noEmit && vite build
+npm run test         # vitest run (272 tests, ~1.5s)
 npm run test:watch   # vitest watch mode
 npm run typecheck    # tsc --noEmit
 npm run wasm:build   # Requires Emscripten (brew install emscripten)
@@ -15,22 +15,22 @@ Run `npm run test` before committing. Run `npm run typecheck` if modifying TypeS
 
 ## Architecture
 
-React 19 + Three.js (via @react-three/fiber) frontend with a C++ WASM backend compiled via Emscripten.
+React 19 + Three.js (via @react-three/fiber) frontend with a C++ WASM backend compiled via Emscripten. Uses HashRouter for GitHub Pages compatibility.
 
 ```
 src/
-  orbit/           # Core: wasmLoader.ts (WASM+TS fallback), analysisLoader.ts, types.ts, constants.ts
-  store/           # Zustand: useMissionStore (satellites, time), useAnalysisStore (analysis tools)
+  orbit/           # Core: wasmLoader.ts (WASM+TS fallback), analysisLoader.ts, eclipse.ts, types.ts, constants.ts
+  store/           # Zustand: useMissionStore, useAnalysisStore, useCatalogStore
   components/
     scene/         # R3F 3D: OrbitScene, Earth, SatelliteMarker, GroundTrackLine, ConjunctionMarker, TransferOrbitPath
-    ui/            # 2D panels: SatelliteList, TimeControls, PropagationPanel, SatelliteInfo, TLEInput
-    analysis/      # Tabbed panels: ManeuverPanel, GroundTrackPanel, ConjunctionPanel, MonteCarloPanel, CoveragePanel
-  processing/      # TLE parser (tle_parser.ts)
-  utils/           # orbitTrail.ts, missionExport.ts
+    ui/            # 2D panels: SatelliteList, TimeControls, PropagationPanel, SatelliteInfo, TLEInput, CatalogBrowser, ErrorBoundary, StatusBar
+    analysis/      # Collapsible panels: ManeuverPanel, LambertPanel, GroundTrackPanel, EclipsePanel, ConjunctionPanel, PassPredictorPanel, MonteCarloPanel, CoveragePanel
+  processing/      # TLE parser (tle_parser.ts), CelesTrak API client (celestrakApi.ts)
+  utils/           # orbitTrail.ts, missionExport.ts, timeFormat.ts (consolidated JD formatting)
   hooks/           # useKeyboardShortcuts.ts
 wasm/              # C++ to WASM build
-  src/exports.cpp  # Emscripten embind bindings (10 functions)
-  src/zenith/      # 14 C++ header-only analysis modules
+  src/exports.cpp  # Emscripten embind bindings
+  src/zenith/      # C++ header-only analysis modules
 public/wasm/       # Compiled WASM output (zenith.js + zenith.wasm.wasm)
 ```
 
@@ -42,11 +42,15 @@ public/wasm/       # Compiled WASM output (zenith.js + zenith.wasm.wasm)
 - **Coordinate system**: Satellite positions are TEME (km). Scene uses km/1000 scale. Axis mapping: TEME x -> scene x, TEME z -> scene y (up), TEME -y -> scene z.
 - **Color theme**: Dracula palette. Use `neon-*` Tailwind classes for accents (purple, cyan, green, orange, red, yellow). Backgrounds use `void`, `deep-space`, `nebula`, `card-surface`.
 - **Path alias**: `@/` maps to `src/` (configured in tsconfig, vite, vitest).
+- **Analysis panels**: Collapsible sections in the right sidebar. Multiple can be open simultaneously. Order: Maneuver, Lambert, Ground Track, Eclipse, Conjunction, Pass Predictor, Monte Carlo, Walker Constellation.
+- **ManeuverPanel sub-tabs**: Hohmann, Plane Change, Phasing, Comparison (Hohmann vs Bi-Elliptic).
+- **CelesTrak API**: `celestrakApi.ts` fetches TLE data. May return 403 for large groups (rate limiting). Error handling suggests TLE input as fallback.
+- **Date formatting**: All Julian Date formatting consolidated in `utils/timeFormat.ts`. Import from there, do not create local duplicates.
 
 ## Conventions
 
 - **TypeScript**: strict mode. `noUnusedLocals`, `noUnusedParameters`, `noUncheckedIndexedAccess` enabled.
-- **React**: Functional components only. Zustand for state. No context providers.
+- **React**: Functional components only. Zustand for state. No context providers. Class component only for ErrorBoundary (React API requirement).
 - **Testing**: Vitest + jsdom + @testing-library/react. Mock `@/orbit/wasmLoader` in component tests. Pure function tests need no mocks.
 - **Styling**: Tailwind CSS. Custom classes: `panel`, `panel-header`, `panel-label`, `btn-primary`, `btn-secondary`, `btn-icon`, `input-field`.
 - **No em dashes** anywhere in any file.

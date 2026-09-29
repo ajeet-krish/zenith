@@ -42,17 +42,6 @@ describe('PropagationPanel', () => {
     expect(screen.getByText('RK45')).toBeInTheDocument()
   })
 
-  it('shows "TS" badge when wasm is not ready', () => {
-    render(<PropagationPanel />)
-    expect(screen.getByText('TS')).toBeInTheDocument()
-  })
-
-  it('shows "WASM" badge when wasm is ready', () => {
-    useMissionStore.setState({ wasmReady: true })
-    render(<PropagationPanel />)
-    expect(screen.getByText('WASM')).toBeInTheDocument()
-  })
-
   it('clicking a propagation method button updates the store', async () => {
     const user = userEvent.setup()
     render(<PropagationPanel />)

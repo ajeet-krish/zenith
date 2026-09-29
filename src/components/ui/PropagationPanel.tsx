@@ -22,24 +22,14 @@ export function PropagationPanel() {
   const propagationMethod = useMissionStore((s) => s.propagationMethod);
   const forceModels = useMissionStore((s) => s.forceModels);
   const currentEpoch = useMissionStore((s) => s.currentEpoch);
-  const wasmReady = useMissionStore((s) => s.wasmReady);
   const setPropagationMethod = useMissionStore((s) => s.setPropagationMethod);
   const toggleForceModel = useMissionStore((s) => s.toggleForceModel);
 
   return (
     <div className="flex items-center gap-3 px-3 py-1.5 bg-black/60 backdrop-blur-sm border-b border-white/5 font-mono text-[11px]">
-      {/* Label + status */}
+      {/* Label */}
       <span className="text-comment uppercase tracking-wider shrink-0">
         PROPAGATION
-      </span>
-      <span
-        className={`text-[9px] px-1 py-0.5 rounded shrink-0 ${
-          wasmReady
-            ? 'text-neon-green bg-neon-green/10'
-            : 'text-neon-orange bg-neon-orange/10'
-        }`}
-      >
-        {wasmReady ? 'WASM' : 'TS'}
       </span>
 
       {/* Divider */}
@@ -81,16 +71,6 @@ export function PropagationPanel() {
           </button>
         ))}
       </div>
-
-      {/* WASM notice */}
-      {!wasmReady && (
-        <>
-          <div className="w-px h-4 bg-white/10 shrink-0" />
-          <span className="text-neon-orange/70 shrink-0">
-            Force models + RK45 need WASM
-          </span>
-        </>
-      )}
 
       {/* Spacer */}
       <div className="flex-1" />
