@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { useMissionStore } from '@/store/useMissionStore'
-import { predictPasses } from '@/orbit/wasmLoader'
-import { sgp4Propagate } from '@/orbit/wasmLoader'
+import { predictPasses, sgp4Propagate } from '@/orbit/wasmLoader'
 import { jdToUtc } from '@/utils/timeFormat'
 
 interface PassInfo {

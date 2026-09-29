@@ -13,6 +13,7 @@ import { OrbitLogo } from '@/components/ui/OrbitLogo';
 import { PropagationPanel } from '@/components/ui/PropagationPanel';
 import { StatusBar } from '@/components/ui/StatusBar';
 import { ResizeHandle } from '@/components/ui/ResizeHandle';
+import { ErrorBoundary } from '@/components/ui/ErrorBoundary';
 import { TheoryPage } from '@/pages/TheoryPage';
 import { useMissionStore } from '@/store/useMissionStore';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
@@ -191,12 +192,14 @@ function App() {
         </header>
 
         {/* Routes */}
-        <div className="flex-1 flex overflow-hidden">
-          <Routes>
-            <Route path="/" element={<OrbitToolPage />} />
-            <Route path="/guide" element={<TheoryPage />} />
-          </Routes>
-        </div>
+        <ErrorBoundary>
+          <div className="flex-1 flex overflow-hidden">
+            <Routes>
+              <Route path="/" element={<OrbitToolPage />} />
+              <Route path="/guide" element={<TheoryPage />} />
+            </Routes>
+          </div>
+        </ErrorBoundary>
       </div>
     </HashRouter>
   );

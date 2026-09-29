@@ -3,6 +3,8 @@
  * Uses cylindrical shadow model (umbra only).
  */
 
+import { sgp4Propagate } from '@/orbit/wasmLoader'
+
 const AU_KM = 149597870.7 // km
 
 /**
@@ -86,8 +88,6 @@ export interface EclipseResult {
   minDurationS: number
   eclipseFraction: number
 }
-
-import { sgp4Propagate } from '@/orbit/wasmLoader'
 
 /**
  * Compute eclipse events for a satellite over a time window.

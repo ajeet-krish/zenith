@@ -15,9 +15,4 @@ export default defineConfig({
     outDir: 'dist',
     chunkSizeWarningLimit: 1600,
   },
-  server: {
-    proxy: {
-      '/api': 'http://localhost:8000',
-    },
-  },
 })

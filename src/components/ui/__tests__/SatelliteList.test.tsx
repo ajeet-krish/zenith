@@ -34,6 +34,7 @@ function makeSat(overrides: Partial<Satellite> = {}): Satellite {
 
 describe('SatelliteList', () => {
   const onOpenTleInput = vi.fn()
+  const onOpenCatalog = vi.fn()
 
   beforeEach(() => {
     vi.clearAllMocks()
@@ -49,18 +50,20 @@ describe('SatelliteList', () => {
   })
 
   it('renders "No satellites loaded" when store is empty', () => {
-    render(<SatelliteList onOpenTleInput={onOpenTleInput} />)
+    render(<SatelliteList onOpenTleInput={onOpenTleInput} onOpenCatalog={onOpenCatalog} />)
     expect(screen.getByText('No satellites loaded')).toBeInTheDocument()
   })
 
-  it('renders the "Add a satellite" link when empty', () => {
-    render(<SatelliteList onOpenTleInput={onOpenTleInput} />)
-    expect(screen.getByText('Add a satellite')).toBeInTheDocument()
+  it('renders empty state with both action buttons', () => {
+    render(<SatelliteList onOpenTleInput={onOpenTleInput} onOpenCatalog={onOpenCatalog} />)
+    expect(screen.getByText('No satellites loaded')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Browse Catalog' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Add from TLE' })).toBeInTheDocument()
   })
 
   it('renders satellite count when satellites exist', () => {
     useMissionStore.setState({ satellites: [makeSat()] })
-    render(<SatelliteList onOpenTleInput={onOpenTleInput} />)
+    render(<SatelliteList onOpenTleInput={onOpenTleInput} onOpenCatalog={onOpenCatalog} />)
     // Header shows count (multiple "1" elements: header count + category count)
     expect(screen.getAllByText('1').length).toBeGreaterThanOrEqual(1)
     expect(screen.getByText('SATELLITES')).toBeInTheDocument()
@@ -68,7 +71,7 @@ describe('SatelliteList', () => {
 
   it('renders satellite name and noradId', () => {
     useMissionStore.setState({ satellites: [makeSat()] })
-    render(<SatelliteList onOpenTleInput={onOpenTleInput} />)
+    render(<SatelliteList onOpenTleInput={onOpenTleInput} onOpenCatalog={onOpenCatalog} />)
     expect(screen.getByText('ISS')).toBeInTheDocument()
     expect(screen.getByText('25544')).toBeInTheDocument()
   })
@@ -76,7 +79,7 @@ describe('SatelliteList', () => {
   it('clicking a satellite row calls selectSatellite', async () => {
     const user = userEvent.setup()
     useMissionStore.setState({ satellites: [makeSat()] })
-    render(<SatelliteList onOpenTleInput={onOpenTleInput} />)
+    render(<SatelliteList onOpenTleInput={onOpenTleInput} onOpenCatalog={onOpenCatalog} />)
 
     const satRow = screen.getByText('ISS').closest('[class*="cursor-pointer"]')!
     await user.click(satRow)
@@ -90,7 +93,7 @@ describe('SatelliteList', () => {
       satellites: [makeSat()],
       selectedSatelliteId: 'sat-1',
     })
-    render(<SatelliteList onOpenTleInput={onOpenTleInput} />)
+    render(<SatelliteList onOpenTleInput={onOpenTleInput} onOpenCatalog={onOpenCatalog} />)
 
     const satRow = screen.getByText('ISS').closest('[class*="cursor-pointer"]')!
     await user.click(satRow)
@@ -101,7 +104,7 @@ describe('SatelliteList', () => {
   it('visibility toggle button works', async () => {
     const user = userEvent.setup()
     useMissionStore.setState({ satellites: [makeSat()] })
-    render(<SatelliteList onOpenTleInput={onOpenTleInput} />)
+    render(<SatelliteList onOpenTleInput={onOpenTleInput} onOpenCatalog={onOpenCatalog} />)
 
     const hideButton = screen.getByRole('button', { name: /Hide ISS/i })
     await user.click(hideButton)
@@ -112,7 +115,7 @@ describe('SatelliteList', () => {
   it('toggling visibility from hidden shows the satellite', async () => {
     const user = userEvent.setup()
     useMissionStore.setState({ satellites: [makeSat({ visible: false })] })
-    render(<SatelliteList onOpenTleInput={onOpenTleInput} />)
+    render(<SatelliteList onOpenTleInput={onOpenTleInput} onOpenCatalog={onOpenCatalog} />)
 
     const showButton = screen.getByRole('button', { name: /Show ISS/i })
     await user.click(showButton)
@@ -122,7 +125,7 @@ describe('SatelliteList', () => {
 
   it('"+ Add TLE" button calls onOpenTleInput', async () => {
     const user = userEvent.setup()
-    render(<SatelliteList onOpenTleInput={onOpenTleInput} />)
+    render(<SatelliteList onOpenTleInput={onOpenTleInput} onOpenCatalog={onOpenCatalog} />)
 
     const addTleButton = screen.getByText('+ Add TLE')
     await user.click(addTleButton)
@@ -130,19 +133,22 @@ describe('SatelliteList', () => {
     expect(onOpenTleInput).toHaveBeenCalledTimes(1)
   })
 
-  it('"Add a satellite" link calls onOpenTleInput when empty', async () => {
+  it('"Add from TLE" button calls onOpenTleInput and "Browse Catalog" calls onOpenCatalog', async () => {
     const user = userEvent.setup()
-    render(<SatelliteList onOpenTleInput={onOpenTleInput} />)
+    render(<SatelliteList onOpenTleInput={onOpenTleInput} onOpenCatalog={onOpenCatalog} />)
 
-    const addLink = screen.getByText('Add a satellite')
-    await user.click(addLink)
-
+    const addTleButton = screen.getByRole('button', { name: 'Add from TLE' })
+    await user.click(addTleButton)
     expect(onOpenTleInput).toHaveBeenCalledTimes(1)
+
+    const browseCatalogButton = screen.getByRole('button', { name: 'Browse Catalog' })
+    await user.click(browseCatalogButton)
+    expect(onOpenCatalog).toHaveBeenCalledTimes(1)
   })
 
   it('renders category header with correct label', () => {
     useMissionStore.setState({ satellites: [makeSat({ category: 'GEO' })] })
-    render(<SatelliteList onOpenTleInput={onOpenTleInput} />)
+    render(<SatelliteList onOpenTleInput={onOpenTleInput} onOpenCatalog={onOpenCatalog} />)
     expect(screen.getByText('GEO')).toBeInTheDocument()
   })
 
@@ -154,7 +160,7 @@ describe('SatelliteList', () => {
         makeSat({ id: 'sat-3', name: 'GPS', category: 'MEO' }),
       ],
     })
-    render(<SatelliteList onOpenTleInput={onOpenTleInput} />)
+    render(<SatelliteList onOpenTleInput={onOpenTleInput} onOpenCatalog={onOpenCatalog} />)
     expect(screen.getByText('LEO')).toBeInTheDocument()
     expect(screen.getByText('MEO')).toBeInTheDocument()
     expect(screen.getByText('ISS')).toBeInTheDocument()

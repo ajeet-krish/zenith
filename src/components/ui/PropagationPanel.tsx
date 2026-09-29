@@ -1,4 +1,5 @@
 import { useMissionStore } from '@/store/useMissionStore';
+import { formatJdShort } from '@/utils/timeFormat';
 
 const PROPAGATION_METHODS: { value: 'sgp4' | 'kepler' | 'rk45'; label: string }[] = [
   { value: 'sgp4', label: 'SGP4' },
@@ -12,13 +13,6 @@ const FORCE_MODELS: { key: 'j2' | 'drag' | 'srp' | 'thirdBody'; label: string }[
   { key: 'srp', label: 'SRP' },
   { key: 'thirdBody', label: '3rd' },
 ];
-
-/**
- * Format Julian Date for display.
- */
-function formatJdShort(jd: number): string {
-  return jd.toFixed(4);
-}
 
 /**
  * PropagationPanel - compact horizontal bar for propagation method and force model configuration.
