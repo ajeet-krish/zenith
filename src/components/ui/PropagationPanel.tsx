@@ -36,7 +36,7 @@ export function PropagationPanel() {
     <div className="flex items-center gap-3 px-3 py-1.5 bg-black/60 backdrop-blur-sm border-b border-white/5 font-mono text-[11px]">
       {/* Label + status */}
       <span className="text-comment uppercase tracking-wider shrink-0">
-        PROP
+        PROPAGATION
       </span>
       <span
         className={`text-[9px] px-1 py-0.5 rounded shrink-0 ${

@@ -47,6 +47,7 @@ interface MissionState {
   removeSatellite: (id: string) => void;
   selectSatellite: (id: string | null) => void;
   toggleSatelliteVisibility: (id: string) => void;
+  setAllSatelliteVisibility: (visible: boolean) => void;
   setCurrentEpoch: (jd: number) => void;
   setIsPlaying: (playing: boolean) => void;
   setTimeSpeed: (speed: number) => void;
@@ -157,6 +158,12 @@ export const useMissionStore = create<MissionState>((set, get) => ({
       satellites: state.satellites.map((s) =>
         s.id === id ? { ...s, visible: !s.visible } : s
       ),
+    }));
+  },
+
+  setAllSatelliteVisibility: (visible) => {
+    set((state) => ({
+      satellites: state.satellites.map((s) => ({ ...s, visible })),
     }));
   },
 

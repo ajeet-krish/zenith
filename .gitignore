@@ -19,3 +19,4 @@ __pycache__/
 # Build cache
 tsconfig.tsbuildinfo
 cache/
+linkedin_posts.md

@@ -30,9 +30,9 @@ describe('PropagationPanel', () => {
     })
   })
 
-  it('renders the PROP label', () => {
+  it('renders the PROPAGATION label', () => {
     render(<PropagationPanel />)
-    expect(screen.getByText('PROP')).toBeInTheDocument()
+    expect(screen.getByText('PROPAGATION')).toBeInTheDocument()
   })
 
   it('renders propagation method buttons (SGP4, Kepler, RK45)', () => {

@@ -17,6 +17,9 @@ export function SatelliteList({
   const selectedId = useMissionStore((s) => s.selectedSatelliteId);
   const selectSatellite = useMissionStore((s) => s.selectSatellite);
   const toggleVisibility = useMissionStore((s) => s.toggleSatelliteVisibility);
+  const setAllVisibility = useMissionStore((s) => s.setAllSatelliteVisibility);
+
+  const anyVisible = satellites.some((s) => s.visible);
 
   // Group by category
   const grouped = satellites.reduce<Record<string, Satellite[]>>((acc, sat) => {
@@ -35,7 +38,18 @@ export function SatelliteList({
         <span className="text-[10px] font-mono text-comment uppercase tracking-wider">
           SATELLITES
         </span>
-        <span className="text-[10px] font-mono text-comment">{satellites.length}</span>
+        <div className="flex items-center gap-2">
+          {satellites.length > 0 && (
+            <button
+              onClick={() => setAllVisibility(!anyVisible)}
+              className="text-[9px] font-mono text-comment hover:text-white transition-colors"
+              title={anyVisible ? 'Hide all' : 'Show all'}
+            >
+              {anyVisible ? 'Hide All' : 'Show All'}
+            </button>
+          )}
+          <span className="text-[10px] font-mono text-comment">{satellites.length}</span>
+        </div>
       </div>
 
       {/* Satellite list */}

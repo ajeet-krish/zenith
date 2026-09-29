@@ -139,8 +139,6 @@ function OrbitToolPage() {
 }
 
 function App() {
-  const wasmReady = useMissionStore((s) => s.wasmReady);
-
   return (
     <HashRouter>
       <div className="h-screen w-screen flex flex-col bg-void overflow-hidden">
@@ -189,15 +187,6 @@ function App() {
             >
               Export
             </button>
-            <span
-              className={`text-[10px] font-mono px-2 py-0.5 ${
-                wasmReady
-                  ? 'text-neon-green bg-neon-green/10'
-                  : 'text-neon-orange bg-neon-orange/10'
-              }`}
-            >
-              {wasmReady ? 'WASM Ready' : 'TS Fallback'}
-            </span>
           </div>
         </header>
 
