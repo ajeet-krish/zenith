@@ -26,7 +26,7 @@ Zenith is an interactive satellite mission planner and orbital mechanics educati
 
 ## Demo
 
-<!-- TODO: Add demo video/GIF here -->
+<video src="docs/videos/demo.mp4" controls width="100%"></video>
 
 *Interactive 3D Earth with real-time satellite propagation. Load TLE data, track multiple satellites, and analyze orbital mechanics with mission planning tools.*
 

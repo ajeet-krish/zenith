@@ -2,6 +2,9 @@ node_modules/
 dist/
 docs/*
 !docs/images/
+!docs/videos/
+docs/videos/*
+!docs/videos/demo.mp4
 coverage/
 .DS_Store
 *.log

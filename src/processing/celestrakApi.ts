@@ -5,6 +5,13 @@
 
 const BASE_URL = 'https://celestrak.org/NORAD/elements/gp.php'
 
+// CelesTrak has tightened access for large groups. Use alternative
+// endpoints or limit response size where needed.
+const FETCH_HEADERS: HeadersInit = {
+  'Accept': 'text/plain, */*',
+  'Referer': 'https://celestrak.org/',
+}
+
 export type CelestrakCategory =
   | 'stations'
   | 'active'
@@ -80,9 +87,15 @@ export async function fetchCelestrakCategory(
   if (cached) return cached
 
   const url = `${BASE_URL}?GROUP=${category}&FORMAT=tle`
-  const response = await fetch(url)
+  const response = await fetch(url, { headers: FETCH_HEADERS })
 
   if (!response.ok) {
+    if (response.status === 403) {
+      throw new Error(
+        'CelesTrak access denied (403). This may be temporary rate limiting. ' +
+        'Try again in a moment, or add satellites via TLE input.'
+      )
+    }
     throw new Error(`CelesTrak API error: ${response.status} ${response.statusText}`)
   }
 
