@@ -10,6 +10,7 @@ coverage/
 *.log
 build/
 wasm/build/
+build-native-tests/
 public/wasm/*
 !public/wasm/zenith.js
 !public/wasm/zenith.wasm.wasm

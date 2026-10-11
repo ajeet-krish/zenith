@@ -25,8 +25,9 @@ inline constexpr double R_EARTH = 6378.137;
 /// Earth J2 oblateness coefficient (dimensionless)
 inline constexpr double J2 = 1.08263e-3;
 
-/// Earth J4 oblateness coefficient (dimensionless)
-inline constexpr double J4 = -1.616e-6;
+/// Earth J4 oblateness coefficient (dimensionless).
+/// WGS-72 value (matches helio_ob); the previous -1.616e-6 was a typo.
+inline constexpr double J4 = -1.6516e-6;
 
 /// Sun gravitational parameter [km^3/s^2]
 inline constexpr double MU_SUN = 1.32712440018e11;
@@ -34,8 +35,8 @@ inline constexpr double MU_SUN = 1.32712440018e11;
 /// Moon gravitational parameter [km^3/s^2]
 inline constexpr double MU_MOON = 4902.800066;
 
-/// Astronomical unit [km]
-inline constexpr double AU = 149597870.7;
+/// Astronomical unit [km] (IAU 2012 value, matches helio_ob)
+inline constexpr double AU = 1.49597870691e8;
 
 /// Speed of light [km/s]
 inline constexpr double C_LIGHT = 299792.458;
@@ -325,7 +326,7 @@ struct PropagatorParams {
 
     double drag_coefficient = 2.2;          ///< Drag coefficient Cd (dimensionless).
     double srp_coefficient = 1.5;           ///< Solar radiation pressure reflectivity Cr.
-    double area_mass_ratio = 0.004;         ///< Area-to-mass ratio [m^2/kg].
+    double area_mass_ratio = 0.01;          ///< Area-to-mass ratio [m^2/kg] (Helio default).
     double dt_step = 60.0;                  ///< Integration step size [s].
     double end_time_days = 7.0;             ///< Propagation duration [days].
 

@@ -15,6 +15,7 @@
 // =============================================================================
 
 #include <algorithm>
+#include <array>
 #include <emscripten/bind.h>
 #include <emscripten/val.h>
 #include <map>
@@ -33,6 +34,10 @@
 #include "zenith/coverage.hpp"
 #include "zenith/pass_predictor.hpp"
 #include "zenith/conjunction.hpp"
+#include "zenith/integrators.hpp"
+#include "zenith/stations.hpp"
+#include "zenith/observations.hpp"
+#include "zenith/partials.hpp"
 
 using namespace emscripten;
 
@@ -419,6 +424,140 @@ val screen_conjunctions_js(val catalog, double screen_distance_km) {
 }
 
 // =============================================================================
+// Orbit Determination (Phase 1): Stations, Observations, Partials, STM
+// =============================================================================
+// Handle-based ground station store (same pattern as sgp4 propagators).
+
+static std::map<int, orbit::ODGroundStation> g_od_stations;
+static int g_next_od_station_handle = 1;
+
+/// Create an OD ground station and return its handle (0 = failure).
+///
+/// @param name      Station identifier.
+/// @param lat_rad   Geodetic latitude [rad].
+/// @param lon_rad   Geodetic longitude [rad].
+/// @param alt_km    Altitude above WGS-84 ellipsoid [km].
+int od_station_create(const std::string& name, double lat_rad,
+                      double lon_rad, double alt_km) {
+    int handle = g_next_od_station_handle++;
+    g_od_stations[handle] = orbit::ODGroundStation(name, lat_rad, lon_rad,
+                                                   alt_km);
+    return handle;
+}
+
+/// Destroy a single OD ground station handle.
+void od_station_destroy(int handle) {
+    g_od_stations.erase(handle);
+}
+
+/// Predict noise-free observables for an ECI state from an OD station.
+///
+/// @return Flat array [range_km, range_rate_kms, ra_rad, dec_rad, az_rad,
+///         el_rad], or null on invalid handle.
+val od_predict_observation_js(int station_h,
+                              double rx, double ry, double rz,
+                              double vx, double vy, double vz,
+                              double jd) {
+    auto it = g_od_stations.find(station_h);
+    if (it == g_od_stations.end()) {
+        return val::null();
+    }
+    const orbit::ODGroundStation& station = it->second;
+    orbit::PredictedComponents c = orbit::predict_observation(
+        orbit::Vec3(rx, ry, rz), orbit::Vec3(vx, vy, vz), station, jd);
+
+    val result = val::array();
+    result.call<void>("push", c.range_km);
+    result.call<void>("push", c.range_rate_kms);
+    result.call<void>("push", c.ra_rad);
+    result.call<void>("push", c.dec_rad);
+    result.call<void>("push", c.az_rad);
+    result.call<void>("push", c.el_rad);
+    return result;
+}
+
+/// Analytic measurement partials for one observation type.
+///
+/// @param station_h  Station handle.
+/// @param obs_type   0=RANGE, 1=RANGE_RATE, 2=RA_DEC, 3=AZ_EL.
+/// @return Flat array [nrows, nrows x 6 partials row-major], or null on
+///         invalid handle or singular geometry.
+val od_measurement_partials_js(int station_h, int obs_type,
+                               double rx, double ry, double rz,
+                               double vx, double vy, double vz,
+                               double jd) {
+    auto it = g_od_stations.find(station_h);
+    if (it == g_od_stations.end()) {
+        return val::null();
+    }
+    if (obs_type < 0 || obs_type > 3) {
+        return val::null();
+    }
+
+    double rows[12] = {0.0};
+    int nrows = 0;
+    bool ok = orbit::measurement_partials(
+        static_cast<orbit::ObsType>(obs_type),
+        orbit::Vec3(rx, ry, rz), orbit::Vec3(vx, vy, vz), it->second, jd,
+        rows, &nrows);
+    if (!ok) {
+        return val::null();
+    }
+
+    val result = val::array();
+    result.call<void>("push", nrows);
+    for (int i = 0; i < nrows * 6; ++i) {
+        result.call<void>("push", rows[i]);
+    }
+    return result;
+}
+
+/// Propagate a 6-dim state with the 42-dim J2 variational system (DOP853).
+///
+/// @param state6  Flat array [rx, ry, rz, vx, vy, vz] in ECI [km, km/s].
+/// @param tier    Force tier: 0 = two-body, 1 = J2.
+/// @param rtol    Relative tolerance.
+/// @param atol    Absolute tolerance.
+/// @param t0      Start time [s].
+/// @param t1      End time [s].
+/// @return Flat array [r(3), v(3), stm(36)] (42 doubles), or null if the
+///         input length is wrong or integration failed.
+val od_propagate_with_stm_js(val state6, int tier, double rtol, double atol,
+                             double t0, double t1) {
+    int len = state6["length"].as<int>();
+    if (len != 6) {
+        return val::null();
+    }
+
+    // Augmented initial state: y = [r, v, Phi] with Phi = identity.
+    std::array<double, 42> y0{};
+    for (int i = 0; i < 6; ++i) {
+        y0[i] = state6[i].as<double>();
+    }
+    for (int i = 0; i < 6; ++i) {
+        y0[6 + i * 6 + i] = 1.0;
+    }
+
+    orbit::STMResult res = orbit::propagate_with_stm(y0, t0, t1, rtol, atol,
+                                                     tier);
+    if (!res.success) {
+        return val::null();
+    }
+
+    val result = val::array();
+    result.call<void>("push", res.position.x);
+    result.call<void>("push", res.position.y);
+    result.call<void>("push", res.position.z);
+    result.call<void>("push", res.velocity.x);
+    result.call<void>("push", res.velocity.y);
+    result.call<void>("push", res.velocity.z);
+    for (double s : res.stm) {
+        result.call<void>("push", s);
+    }
+    return result;
+}
+
+// =============================================================================
 // Embind Registration
 // =============================================================================
 
@@ -436,4 +575,9 @@ EMSCRIPTEN_BINDINGS(zenith) {
     function("generate_walker", &generate_walker_js);
     function("predict_passes", &predict_passes_js);
     function("screen_conjunctions", &screen_conjunctions_js);
+    function("od_station_create", &od_station_create);
+    function("od_station_destroy", &od_station_destroy);
+    function("od_predict_observation", &od_predict_observation_js);
+    function("od_measurement_partials", &od_measurement_partials_js);
+    function("od_propagate_with_stm", &od_propagate_with_stm_js);
 }

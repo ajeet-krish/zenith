@@ -127,7 +127,16 @@ inline Vec3 ecef_to_teme(const Vec3& r_ecef, double jd_ut1) {
 /// Transform TEME state (position + velocity) to ECEF.
 ///
 /// Velocity includes the cross product term:
-///   v_ecef = Rz(-theta) * v_teme + omega_earth x r_ecef
+///   v_ecef = Rz(-theta) * v_teme - omega_earth x r_ecef
+///
+/// BUGFIX (2026-10): the previous implementation ADDED +omega x r_ecef,
+/// which is the wrong sign.  The correct relation comes from differentiating
+/// r_ecef = Rz(-theta) r_teme with dtheta/dt = omega_earth, giving
+/// v_ecef = Rz(-theta) v_teme - omega x r_ecef (matches helio_ob
+/// frames.eci_to_ecef).  The old sign error was worth ~2*omega*|r|
+/// (~0.95 km/s at LEO) and corrupted station range-rates.  No caller in
+/// the C++ tree used the velocity overload (ground_track uses positions,
+/// pass_predictor receives ECEF states), so no caller updates were needed.
 ///
 /// @param r_teme  Position in TEME [km].
 /// @param v_teme  Velocity in TEME [km/s].
@@ -140,32 +149,35 @@ inline std::pair<Vec3, Vec3> teme_to_ecef(const Vec3& r_teme,
     Vec3 r_ecef = rotate_z(r_teme, -theta);
     Vec3 v_ecef = rotate_z(v_teme, -theta);
 
-    // Add the Earth rotation contribution: omega x r_ecef.
+    // Subtract the Earth rotation term: omega x r_ecef.
     // omega = [0, 0, omega_earth] in ECEF.
     // omega x r = [-omega * y, omega * x, 0].
-    v_ecef.x += -OMEGA_EARTH * r_ecef.y;
-    v_ecef.y +=  OMEGA_EARTH * r_ecef.x;
+    v_ecef.x -= -OMEGA_EARTH * r_ecef.y;
+    v_ecef.y -=  OMEGA_EARTH * r_ecef.x;
 
     return {r_ecef, v_ecef};
 }
 
 /// Transform ECEF state (position + velocity) to TEME.
 ///
-/// Inverse of the TEME->ECEF state transformation.
+/// Inverse of the TEME->ECEF state transformation:
+///   v_teme = Rz(theta) * (v_ecef + omega_earth x r_ecef)
+///
+/// BUGFIX (2026-10): the previous implementation subtracted omega x r_ecef
+/// inside the rotation, matching the (wrong) forward transform's sign.
+/// Corrected to match helio_ob frames.ecef_to_eci.
 inline std::pair<Vec3, Vec3> ecef_to_teme(const Vec3& r_ecef,
                                            const Vec3& v_ecef,
                                            double jd_ut1) {
     double theta = gmst(jd_ut1);
     Vec3 r_teme = rotate_z(r_ecef, theta);
 
-    // Remove the Earth rotation contribution first.
-    // v_ecef = Rz(-theta) * v_teme + omega x r_ecef
-    // Rz(theta) * v_ecef = v_teme + Rz(theta) * (omega x r_ecef)
-    // v_teme = Rz(theta) * (v_ecef - omega x r_ecef)
+    // v_ecef = Rz(-theta) * v_teme - omega x r_ecef
+    // Rz(theta) * (v_ecef + omega x r_ecef) = v_teme
     Vec3 omega_cross_r = {-OMEGA_EARTH * r_ecef.y,
                            OMEGA_EARTH * r_ecef.x,
                            0.0};
-    Vec3 v_corrected = v_ecef - omega_cross_r;
+    Vec3 v_corrected = v_ecef + omega_cross_r;
     Vec3 v_teme = rotate_z(v_corrected, theta);
 
     return {r_teme, v_teme};
@@ -199,17 +211,16 @@ inline Vec3 lla_to_ecef(double lat_rad, double lon_rad, double alt_km) {
     return {x, y, z};
 }
 
-/// Convert TEME position to geodetic coordinates (latitude, longitude, altitude).
+/// Convert ECEF position to geodetic coordinates (latitude, longitude,
+/// altitude) on the WGS-84 ellipsoid.
 ///
-/// First rotates to ECEF, then uses an iterative method to solve for
-/// geodetic latitude on the WGS-84 ellipsoid.
+/// Iterative solution matching helio_ob frames.ecef_to_lla: longitude from
+/// atan2, then a fixed-point iteration on geodetic latitude with altitude
+/// feedback.  Converges in a few iterations for Earth-orbit altitudes.
 ///
-/// @param r_teme  Position in TEME [km].
-/// @param jd_ut1  UT1 Julian Date.
+/// @param r_ecef  Position in ECEF [km].
 /// @return LLA struct with lat [rad], lon [rad], alt [km].
-inline LLA teme_to_lla(const Vec3& r_teme, double jd_ut1) {
-    Vec3 r_ecef = teme_to_ecef(r_teme, jd_ut1);
-
+inline LLA ecef_to_lla(const Vec3& r_ecef) {
     double x = r_ecef.x;
     double y = r_ecef.y;
     double z = r_ecef.z;
@@ -217,15 +228,28 @@ inline LLA teme_to_lla(const Vec3& r_teme, double jd_ut1) {
     // Longitude is straightforward.
     double lon = std::atan2(y, x);
 
-    // Iterative solution for geodetic latitude and altitude.
-    double p = std::sqrt(x * x + y * y);
-    double lat = std::atan2(z, p * (1.0 - WGS84_E2));  // Initial guess.
+    // Polar special case: no well-defined longitude circle.
+    double p = std::hypot(x, y);
+    if (p < 1e-9) {
+        double lat = (z >= 0.0) ? (PI / 2.0) : (-PI / 2.0);
+        double alt = std::abs(z) - WGS84_A * std::sqrt(1.0 - WGS84_E2);
+        LLA out;
+        out.lat = lat;
+        out.lon = lon;
+        out.alt = alt;
+        return out;
+    }
 
-    for (int iter = 0; iter < 20; ++iter) {
+    // Iterative solution for geodetic latitude and altitude.
+    double lat = std::atan2(z, p * (1.0 - WGS84_E2));  // Initial guess.
+    double alt = 0.0;
+
+    for (int iter = 0; iter < 10; ++iter) {
         double sin_lat = std::sin(lat);
         double n = WGS84_A / std::sqrt(1.0 - WGS84_E2 * sin_lat * sin_lat);
-        double lat_new = std::atan2(z + WGS84_E2 * n * sin_lat, p);
-        if (std::abs(lat_new - lat) < 1e-12) {
+        alt = p / std::cos(lat) - n;
+        double lat_new = std::atan2(z, p * (1.0 - WGS84_E2 * n / (n + alt)));
+        if (std::abs(lat_new - lat) < 1e-14) {
             lat = lat_new;
             break;
         }
@@ -234,14 +258,74 @@ inline LLA teme_to_lla(const Vec3& r_teme, double jd_ut1) {
 
     double sin_lat = std::sin(lat);
     double n = WGS84_A / std::sqrt(1.0 - WGS84_E2 * sin_lat * sin_lat);
-    double alt = p / std::cos(lat) - n;
+    alt = p / std::cos(lat) - n;
 
-    // Handle poles where cos(lat) ~ 0.
-    if (std::abs(lat) > (PI / 2.0 - 1e-10)) {
-        alt = std::abs(z) / std::abs(sin_lat) - n * (1.0 - WGS84_E2);
-    }
+    LLA out;
+    out.lat = lat;
+    out.lon = (lon < PI) ? lon : (lon - TWO_PI);
+    out.alt = alt;
+    return out;
+}
 
-    return {lat, lon, alt};
+/// Convert TEME position to geodetic coordinates (latitude, longitude, altitude).
+///
+/// First rotates to ECEF, then delegates to ecef_to_lla().
+///
+/// @param r_teme  Position in TEME [km].
+/// @param jd_ut1  UT1 Julian Date.
+/// @return LLA struct with lat [rad], lon [rad], alt [km].
+inline LLA teme_to_lla(const Vec3& r_teme, double jd_ut1) {
+    return ecef_to_lla(teme_to_ecef(r_teme, jd_ut1));
+}
+
+// ============================================================================
+// SEZ (South-East-Zenith) Local Frame
+// ============================================================================
+
+/// Convert an ECEF position difference to the local South-East-Zenith
+/// frame at a geodetic site.  Matches helio_ob frames.ecef_to_sez.
+///
+///   S (South)  =  sin(lat)cos(lon) x + sin(lat)sin(lon) y - cos(lat) z
+///   E (East)   = -sin(lon) x + cos(lon) y
+///   Z (Zenith) =  cos(lat)cos(lon) x + cos(lat)sin(lon) y + sin(lat) z
+///
+/// @param r_ecef  Position vector in ECEF [km].
+/// @param lat_rad  Geodetic latitude of the site [rad].
+/// @param lon_rad  Geodetic longitude of the site [rad].
+/// @return Position in SEZ (south, east, zenith) [km].
+inline Vec3 ecef_to_sez(const Vec3& r_ecef, double lat_rad, double lon_rad) {
+    double sin_lat = std::sin(lat_rad);
+    double cos_lat = std::cos(lat_rad);
+    double sin_lon = std::sin(lon_rad);
+    double cos_lon = std::cos(lon_rad);
+
+    return {
+        sin_lat * cos_lon * r_ecef.x + sin_lat * sin_lon * r_ecef.y
+            - cos_lat * r_ecef.z,
+        -sin_lon * r_ecef.x + cos_lon * r_ecef.y,
+        cos_lat * cos_lon * r_ecef.x + cos_lat * sin_lon * r_ecef.y
+            + sin_lat * r_ecef.z};
+}
+
+/// Convert a local South-East-Zenith position to ECEF (inverse of
+/// ecef_to_sez; rotation transpose).  Matches helio_ob frames.sez_to_ecef.
+///
+/// @param r_sez   Position in SEZ (south, east, zenith) [km].
+/// @param lat_rad  Geodetic latitude of the site [rad].
+/// @param lon_rad  Geodetic longitude of the site [rad].
+/// @return Position vector in ECEF [km].
+inline Vec3 sez_to_ecef(const Vec3& r_sez, double lat_rad, double lon_rad) {
+    double sin_lat = std::sin(lat_rad);
+    double cos_lat = std::cos(lat_rad);
+    double sin_lon = std::sin(lon_rad);
+    double cos_lon = std::cos(lon_rad);
+
+    return {
+        sin_lat * cos_lon * r_sez.x - sin_lon * r_sez.y
+            + cos_lat * cos_lon * r_sez.z,
+        sin_lat * sin_lon * r_sez.x + cos_lon * r_sez.y
+            + cos_lat * sin_lon * r_sez.z,
+        -cos_lat * r_sez.x + sin_lat * r_sez.z};
 }
 
 // ============================================================================

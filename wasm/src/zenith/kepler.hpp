@@ -6,6 +6,7 @@
 ///        analytical propagation of classical elements and state vectors.
 
 #include <cmath>
+#include <stdexcept>
 
 #include "orbit_types.hpp"
 #include "coordinate_frames.hpp"
@@ -27,7 +28,15 @@ namespace orbit {
 /// @param e   Eccentricity [0, 1).
 /// @param tol Convergence tolerance on E [rad].
 /// @return Eccentric anomaly E [rad] in [0, 2*PI].
+/// @throws std::invalid_argument if e < 0 or e >= 1 (matches helio_ob
+///         solve_kepler ValueError semantics; elliptic orbits only).
 inline double solve_kepler(double M, double e, double tol = 1e-12) {
+    // Elliptic-orbit guard (helio_ob raises ValueError for e >= 1).
+    if (e < 0.0 || e >= 1.0) {
+        throw std::invalid_argument(
+            "solve_kepler: eccentricity must satisfy 0 <= e < 1");
+    }
+
     // Normalize M to [0, 2*PI].
     M = std::fmod(M, TWO_PI);
     if (M < 0.0) {
@@ -122,6 +131,49 @@ inline double eccentric_to_true(double E, double e) {
     return ta;
 }
 
+/// Convert eccentric anomaly to mean anomaly.
+///
+/// Applies Kepler's equation directly: M = E - e*sin(E).
+/// Matches helio_ob kepler.eccentric_to_mean.
+///
+/// @param E  Eccentric anomaly [rad].
+/// @param e  Eccentricity [0, 1).
+/// @return Mean anomaly [rad] in [0, 2*PI].
+inline double eccentric_to_mean(double E, double e) {
+    double M = E - e * std::sin(E);
+
+    // Normalize to [0, 2*PI].
+    M = std::fmod(M, TWO_PI);
+    if (M < 0.0) {
+        M += TWO_PI;
+    }
+
+    return M;
+}
+
+/// Convert true anomaly to eccentric anomaly.
+///
+/// Half-angle formula with correct quadrant handling:
+///   E = 2 * atan2(sqrt((1-e)/(1+e)) * sin(ta/2), cos(ta/2))
+/// Matches helio_ob kepler.true_to_eccentric.
+///
+/// @param ta  True anomaly [rad].
+/// @param e   Eccentricity [0, 1).
+/// @return Eccentric anomaly [rad] in [0, 2*PI].
+inline double true_to_eccentric(double ta, double e) {
+    double half_ecc_factor = std::sqrt((1.0 - e) / (1.0 + e));
+    double E = 2.0 * std::atan2(half_ecc_factor * std::sin(ta / 2.0),
+                                 std::cos(ta / 2.0));
+
+    // Normalize to [0, 2*PI].
+    E = std::fmod(E, TWO_PI);
+    if (E < 0.0) {
+        E += TWO_PI;
+    }
+
+    return E;
+}
+
 /// Convert true anomaly to mean anomaly.
 ///
 /// First converts true anomaly to eccentric anomaly using:
@@ -133,8 +185,7 @@ inline double eccentric_to_true(double E, double e) {
 /// @return Mean anomaly [rad] in [0, 2*PI].
 inline double true_to_mean(double ta, double e) {
     // True anomaly to eccentric anomaly.
-    double half_ecc_factor = std::sqrt((1.0 - e) / (1.0 + e));
-    double E = 2.0 * std::atan2(half_ecc_factor * std::sin(ta / 2.0), std::cos(ta / 2.0));
+    double E = true_to_eccentric(ta, e);
 
     // Eccentric anomaly to mean anomaly.
     double M = E - e * std::sin(E);

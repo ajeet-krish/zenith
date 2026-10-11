@@ -3,21 +3,28 @@
 /// @file force_models.hpp
 /// @brief Perturbation force models for numerical orbit propagation.
 ///        Provides individual force accelerations (two-body, J2, J4, drag,
-///        SRP, third-body) and a combined total acceleration function
-///        for use with RK4/RK45 integrators.
+///        SRP, third-body), a combined total acceleration function for use
+///        with RK4/RK45 integrators, and analytic Jacobians (da/dr) for
+///        the two-body, J2, and drag forces used by the variational
+///        (STM) propagators in the orbit-determination suite.
+///
+///        Drag uses Helio's Vallado Table 8-4 single-layer exponential
+///        atmosphere (see od_constants.hpp) for golden-master parity.
 
+#include "od_constants.hpp"
+#include "matrix_ops.hpp"
 #include "orbit_types.hpp"
 
 #include <cmath>
+#include <stdexcept>
+#include <tuple>
+#include <utility>
 
 namespace orbit {
 
 // ============================================================================
 // Constants for force models
 // ============================================================================
-
-/// Atmospheric density at sea level [kg/m^3] (standard atmosphere).
-inline constexpr double RHO_0 = 1.225;
 
 /// Solar radiation pressure at 1 AU [N/m^2].
 inline constexpr double SRP_PRESSURE = 4.56e-6;
@@ -58,6 +65,32 @@ inline Vec3 compute_two_body_acceleration(const Vec3& r,
     return r * factor;
 }
 
+/// Analytic Jacobian of the two-body acceleration, da/dr (3x3).
+///
+///   da_i/dx_j = -mu * (delta_ij / r^3 - 3 * x_i * x_j / r^5)
+///
+/// @param r   Position vector in ECI [km].
+/// @param mu  Gravitational parameter [km^3/s^2]. Defaults to MU_EARTH.
+/// @return Jacobian matrix, units s^-2.
+inline Mat3d two_body_jacobian(const Vec3& r, double mu = MU_EARTH) {
+    const double r_mag = r.magnitude();
+    if (r_mag < 1e-15) {
+        return Mat3d{};
+    }
+    const double r3 = r_mag * r_mag * r_mag;
+    const double r5 = r3 * r_mag * r_mag;
+    const double x[3] = {r.x, r.y, r.z};
+
+    Mat3d jac;
+    for (std::size_t i = 0; i < 3; ++i) {
+        for (std::size_t j = 0; j < 3; ++j) {
+            const double delta_ij = (i == j) ? 1.0 : 0.0;
+            jac(i, j) = -mu * (delta_ij / r3 - 3.0 * x[i] * x[j] / r5);
+        }
+    }
+    return jac;
+}
+
 // ============================================================================
 // J2 Oblateness Perturbation
 // ============================================================================
@@ -83,6 +116,41 @@ inline Vec3 compute_j2_acceleration(const Vec3& r) {
     double az = r.z * (3.0 - 5.0 * ratio2);
 
     return {coeff * ax, coeff * ay, coeff * az};
+}
+
+/// J2 acceleration and its analytic 3x3 Jacobian da/dr.
+///
+/// Matches helio_ob forces.j2_accel_and_jacobian (Waltz / Vallado Eq 8-20
+/// derivative form).
+///
+/// @param r  Position vector in ECI [km].
+/// @return Pair (accel [km/s^2], jac [s^-2]).
+inline std::pair<Vec3, Mat3d> j2_accel_and_jacobian(const Vec3& r) {
+    const double x = r.x;
+    const double y = r.y;
+    const double z = r.z;
+    const double r2 = x * x + y * y + z * z;
+    const double r_mag = std::sqrt(r2);
+    const double r7 = r_mag * r_mag * r_mag * r_mag *
+                      r_mag * r_mag * r_mag;
+    const double r9 = r7 * r2;
+    const double k = -1.5 * J2 * MU_EARTH * (R_EARTH * R_EARTH);
+    const double g = r2 - 5.0 * z * z;
+    const double h = 3.0 * r2 - 5.0 * z * z;
+
+    const Vec3 accel(k * x * g / r7, k * y * g / r7, k * z * h / r7);
+
+    Mat3d jac;
+    jac(0, 0) = k * (g / r7 + 2.0 * x * x / r7 - 7.0 * x * x * g / r9);
+    jac(1, 1) = k * (g / r7 + 2.0 * y * y / r7 - 7.0 * y * y * g / r9);
+    jac(2, 2) = k * (h / r7 - 4.0 * z * z / r7 - 7.0 * z * z * h / r9);
+    jac(0, 1) = k * x * y * (2.0 / r7 - 7.0 * g / r9);
+    jac(1, 0) = jac(0, 1);
+    jac(0, 2) = k * x * z * (-8.0 / r7 - 7.0 * g / r9);
+    jac(2, 0) = jac(0, 2);
+    jac(1, 2) = k * y * z * (-8.0 / r7 - 7.0 * g / r9);
+    jac(2, 1) = jac(1, 2);
+    return {accel, jac};
 }
 
 // ============================================================================
@@ -121,90 +189,138 @@ inline Vec3 compute_j4_acceleration(const Vec3& r) {
 // Atmospheric Drag Perturbation
 // ============================================================================
 
-/// Atmospheric drag acceleration.
-/// Uses a simple exponential atmosphere model:
-///   rho = rho0 * exp(-(r - R_EARTH) / H)
-/// where rho0 = 1.225 kg/m^3, H = 8.5 km.
-/// The drag acceleration is:
+/// Atmospheric density [kg/m^3] at a position.
+///
+/// Vallado Table 8-4 single-layer exponential model (helio_ob parity):
+///   rho(h) = RHO0 * exp(-(h - H0_KM) / H_SCALE_KM)
+/// with h = |r| - R_EARTH.  The exponent is capped at MAX_EXPONENT so
+/// non-physical states deep inside the Earth cannot overflow exp().
+///
+/// @param r  Position vector in ECI [km].
+/// @return Mass density [kg/m^3].
+inline double atmospheric_density(const Vec3& r) {
+    const double altitude_km = r.magnitude() - R_EARTH;
+    double exponent = (H0_KM - altitude_km) / H_SCALE_KM;
+    if (exponent > MAX_EXPONENT) {
+        exponent = MAX_EXPONENT;
+    }
+    return RHO0 * std::exp(exponent);
+}
+
+/// Co-rotating atmosphere velocity in ECI, v_atm = omega_earth x r.
+///
+/// @param r  Position vector in ECI [km].
+/// @return Atmosphere velocity [km/s].
+inline Vec3 atmosphere_velocity_eci(const Vec3& r) {
+    return Vec3(0.0, 0.0, OMEGA_EARTH).cross(r);
+}
+
+/// Atmospheric drag acceleration (Helio drag.drag_accel parity).
+///
 ///   a_drag = -0.5 * rho * Cd * (A/m) * |v_rel| * v_rel
-/// where v_rel = v - v_atm and v_atm = omega_earth x r.
-/// @param r    Position vector in ECI [km].
-/// @param v    Velocity vector in ECI [km/s].
-/// @param jd   Julian Date (unused in this simplified model, kept for
-///             interface consistency).
-/// @param params  PropagatorParams containing Cd and A/m.
-/// @return Acceleration vector [km/s^2].
+///
+/// with v_rel = v - omega_earth x r against a co-rotating atmosphere.
+/// Density is converted to kg/km^3 and (A/m) is converted from m^2/kg to
+/// km^2/kg so the result is km/s^2.
+///
+/// @param r       Position vector in ECI [km].
+/// @param v       Velocity vector in ECI [km/s].
+/// @param params  Drag parameters (area-to-mass ratio and Cd).
+/// @return Drag acceleration vector [km/s^2].
+inline Vec3 drag_acceleration(const Vec3& r, const Vec3& v,
+                              const DragParams& params) {
+    const double rho = atmospheric_density(r) * KG_M3_TO_KG_KM3;
+    const Vec3 v_rel = v - atmosphere_velocity_eci(r);
+    const double speed = v_rel.magnitude();
+    const double factor = 0.5 * rho * params.cd *
+                          params.a_over_m_km2_kg * speed;
+    return v_rel * (-factor);
+}
+
+/// Atmospheric drag acceleration from PropagatorParams (keeps the legacy
+/// interface used by compute_total_acceleration).
+///
+/// @param r       Position vector in ECI [km].
+/// @param v       Velocity vector in ECI [km/s].
+/// @param jd      Julian Date (unused in this model, kept for interface
+///                consistency).
+/// @param params  PropagatorParams containing Cd and A/m [m^2/kg].
+/// @return Drag acceleration vector [km/s^2].
 inline Vec3 compute_drag_acceleration(const Vec3& r, const Vec3& v,
                                       double jd,
                                       const PropagatorParams& params) {
     (void)jd;  // Kept for interface consistency; unused in this model.
+    DragParams drag = DragParams::from_m2_per_kg(params.area_mass_ratio,
+                                                 params.drag_coefficient);
+    return drag_acceleration(r, v, drag);
+}
 
-    // Altitude above Earth's surface [km].
-    double r_mag = r.magnitude();
-    double altitude = r_mag - R_EARTH;
-
-    // Altitude-dependent scale height (km).
-    // ~40 km at surface, increasing with altitude.
-    // At 400 km altitude, effective scale height is ~80 km.
-    double scale_height = 40.0 + 0.1 * altitude;
-    if (scale_height < 7.0) scale_height = 7.0;
-
-    // Exponential atmosphere density [kg/m^3].
-    double rho = RHO_0 * std::exp(-altitude / scale_height);
-
-    // Atmospheric rotation velocity: v_atm = omega_earth x r.
-    // omega_earth is along the z-axis (ECI).
-    Vec3 omega = {0.0, 0.0, OMEGA_EARTH};
-    Vec3 v_atm = omega.cross(r);
-
-    // Relative velocity of the satellite with respect to the atmosphere.
-    Vec3 v_rel = v - v_atm;
-    double v_rel_mag = v_rel.magnitude();
-
-    // Drag acceleration: a = -0.5 * rho * Cd * (A/m) * |v_rel| * v_rel.
-    // Note: A/m is in m^2/kg, rho is in kg/m^3, so rho * (A/m) has units
-    // of 1/m.  Multiply by v_rel^2 [km^2/s^2] and convert to [km/s^2]
-    // by dividing by 1000 (1 m = 0.001 km), giving:
-    //   a [km/s^2] = -0.5 * rho * Cd * (A/m) * v_rel_mag * v_rel / 1000
-    // However, a cleaner derivation: rho [kg/m^3] * Cd * (A/m) [m^2/kg]
-    // gives [1/m].  We need the result in [km/s^2].
-    //   a = -0.5 * rho * Cd * (A/m) * |v_rel| * v_rel
-    //   rho * (A/m) is [1/m], v_rel is [km/s], |v_rel| is [km/s]
-    //   So the product is [km^2/s^2 / m].  To get [km/s^2]:
-    //   multiply by 1000 m/km -> [km/s^2].
-    // Actually, let's be more careful:
-    //   rho [kg/m^3] * Cd [dimensionless] * A/m [m^2/kg] = [1/m]
-    //   |v_rel| [km/s] * v_rel [km/s] = [km^2/s^2]
-    //   Product: [km^2 / (s^2 * m)].
-    //   To convert m to km: divide by 1000 (1 m = 1e-3 km).
-    //   So: a [km/s^2] = -0.5 * rho * Cd * (A/m) * |v_rel| * v_rel * 1e-3
-    //   But this makes drag ~1000x too large.
-    // Correct approach: convert v_rel to m/s first:
-    //   a [m/s^2] = -0.5 * rho * Cd * (A/m) * |v_rel_m| * v_rel_m
-    //   Then convert to km/s^2: divide by 1000.
-    //   a [km/s^2] = -0.5 * rho * Cd * (A/m) * |v_rel| * v_rel * (1e3 / 1e3)
-    //   = -0.5 * rho * Cd * (A/m) * |v_rel| * v_rel
-    // since (km/s) * (km/s) * (1/m) -> need to sort units.
-    // Actually: v_rel [km/s] = 1e3 * v_rel [m/s], so |v_rel|*v_rel [km^2/s^2]
-    // = 1e6 * [m^2/s^2].  And rho* Cd * (A/m) [1/m].
-    // Product: 1e6 / m [km^2/(s^2 m)].  To get km/s^2, need /km:
-    // multiply by 1e-3 -> 1e3 [km/s^2].
-    // This is clearly wrong dimensionally. Let me just use the standard form:
-    // a [m/s^2] = -0.5 * rho * Cd * (A/m) * |v_rel| * v_rel
-    // where everything is in SI.  Then convert to km/s^2 (divide by 1000).
-    // Convert v_rel to m/s for the computation.
-    double v_rel_ms = v_rel_mag * 1000.0;  // km/s -> m/s
-    double a_mag_ms2 = 0.5 * rho * params.drag_coefficient *
-                       params.area_mass_ratio * v_rel_ms * v_rel_ms;
-    // a_mag is in m/s^2.  Convert to km/s^2.
-    double a_mag = a_mag_ms2 / 1000.0;
-
-    // Direction is opposite to v_rel.
-    if (v_rel_mag == 0.0) {
-        return {0.0, 0.0, 0.0};
+/// Drag acceleration with analytic Jacobians da/dr and da/dCd.
+///
+/// With a = -k(r) * s * v_rel (k = 0.5 * rho(r) * Cd * (A/m) in km units,
+/// s = |v_rel|):
+///
+///   da/dr  = -(k * s * v_rel (dln rho/dr)^T + k * v_rel (ds/dr)^T
+///              + k * s * M)
+///   da/dCd = a / Cd        (drag is exactly linear in Cd)
+///
+/// where M = dv_rel/dr = -[omega_E]_x, dln rho/dr = -r / (|r| H_SCALE_KM),
+/// and ds/dr = -M v_rel / s.  Matches helio_ob drag.drag_accel_and_jacobian.
+///
+/// @param r       Position vector in ECI [km].
+/// @param v       Velocity vector in ECI [km/s].
+/// @param params  Drag parameters (area-to-mass ratio and Cd).
+/// @return Tuple (accel [km/s^2], da_dr [s^-1], da_dcd [km/s^2 per Cd]).
+/// @throws std::invalid_argument if Cd is zero (da/dCd = a / Cd undefined).
+inline std::tuple<Vec3, Mat3d, Vec3> drag_accel_and_jacobian(
+    const Vec3& r, const Vec3& v, const DragParams& params) {
+    if (params.cd == 0.0) {
+        throw std::invalid_argument(
+            "drag_accel_and_jacobian requires a nonzero Cd");
     }
-    Vec3 v_rel_hat = v_rel / v_rel_mag;
-    return v_rel_hat * (-a_mag);
+
+    const Vec3 v_rel = v - atmosphere_velocity_eci(r);
+    const double rho_km = atmospheric_density(r) * KG_M3_TO_KG_KM3;
+    const double speed = v_rel.magnitude();
+    const double k = 0.5 * rho_km * params.cd * params.a_over_m_km2_kg;
+    const Vec3 accel = v_rel * (-k * speed);
+
+    // dln rho/dr = -r / (|r| * H_SCALE_KM).
+    const double r_norm = r.magnitude();
+    const double inv_rh = -1.0 / (r_norm * H_SCALE_KM);
+    const double dln_rho_dr[3] = {r.x * inv_rh, r.y * inv_rh, r.z * inv_rh};
+
+    // M = dv_rel/dr = -[omega_E]_x (constant skew matrix).
+    // [omega]_x = [[0, -w, 0], [w, 0, 0], [0, 0, 0]] so
+    // M = [[0, w, 0], [-w, 0, 0], [0, 0, 0]].
+    const double m[3][3] = {{0.0, OMEGA_EARTH, 0.0},
+                            {-OMEGA_EARTH, 0.0, 0.0},
+                            {0.0, 0.0, 0.0}};
+
+    // ds/dr = -M v_rel / s.
+    double m_v_rel[3] = {0.0, 0.0, 0.0};
+    for (int i = 0; i < 3; ++i) {
+        m_v_rel[i] = m[i][0] * v_rel.x + m[i][1] * v_rel.y + m[i][2] * v_rel.z;
+    }
+    const double inv_speed = 1.0 / speed;
+    const double ds_dr[3] = {-m_v_rel[0] * inv_speed,
+                             -m_v_rel[1] * inv_speed,
+                             -m_v_rel[2] * inv_speed};
+
+    const double v_rel3[3] = {v_rel.x, v_rel.y, v_rel.z};
+
+    // da/dr = -(k s v_rel (dln rho/dr)^T + k v_rel (ds/dr)^T + k s M).
+    Mat3d da_dr;
+    for (std::size_t i = 0; i < 3; ++i) {
+        for (std::size_t j = 0; j < 3; ++j) {
+            da_dr(i, j) = -(k * speed * v_rel3[i] * dln_rho_dr[j]
+                            + k * v_rel3[i] * ds_dr[j]
+                            + k * speed * m[i][j]);
+        }
+    }
+
+    const Vec3 da_dcd = accel * (1.0 / params.cd);
+    return {accel, da_dr, da_dcd};
 }
 
 // ============================================================================
@@ -466,6 +582,58 @@ inline Vec3 compute_total_acceleration(const Vec3& r, const Vec3& v,
     }
 
     return a_total;
+}
+
+// ============================================================================
+// Combined Force Jacobians (Two-Body + J2 [+ Drag])
+// ============================================================================
+
+/// Combined two-body plus J2 acceleration and analytic 3x3 Jacobian da/dr.
+///
+/// The Helio-parity core used by the variational (STM) propagators.
+/// Matches helio_ob forces.combined_accel_and_jacobian.
+///
+/// @param r  Position vector in ECI [km].
+/// @return Pair (accel [km/s^2], jac [s^-2]).
+inline std::pair<Vec3, Mat3d> combined_accel_and_jacobian(const Vec3& r) {
+    const Vec3 accel_tb = compute_two_body_acceleration(r);
+    const Mat3d jac_tb = two_body_jacobian(r);
+    auto [accel_j2, jac_j2] = j2_accel_and_jacobian(r);
+    return {accel_tb + accel_j2, jac_tb + jac_j2};
+}
+
+/// Combined acceleration and Jacobian with optional drag, driven by
+/// PropagatorParams (legacy fields) plus an explicit use_drag switch.
+///
+/// Starts from two-body + J2 (if params.use_j2), then adds drag when
+/// use_drag is true (drag parameters come from params.area_mass_ratio
+/// [m^2/kg] and params.drag_coefficient).  SRP and third-body are not
+/// part of the Phase 1 OD force tier set.
+///
+/// @param r         Position vector in ECI [km].
+/// @param v         Velocity vector in ECI [km/s].
+/// @param params    PropagatorParams (use_j2 flag, Cd, A/m).
+/// @param use_drag  Whether to include atmospheric drag.
+/// @return Pair (accel [km/s^2], jac [s^-2]).
+inline std::pair<Vec3, Mat3d> combined_accel_and_jacobian(
+    const Vec3& r, const Vec3& v,
+    const PropagatorParams& params,
+    bool use_drag) {
+    auto [accel, jac] = combined_accel_and_jacobian(r);
+    if (!params.use_j2) {
+        // Recompute as two-body only (rare path; clarity over speed).
+        accel = compute_two_body_acceleration(r);
+        jac = two_body_jacobian(r);
+    }
+    if (use_drag) {
+        DragParams drag = DragParams::from_m2_per_kg(params.area_mass_ratio,
+                                                     params.drag_coefficient);
+        auto [a_drag, da_dr, da_dcd] = drag_accel_and_jacobian(r, v, drag);
+        (void)da_dcd;
+        accel += a_drag;
+        jac += da_dr;
+    }
+    return {accel, jac};
 }
 
 }  // namespace orbit

@@ -188,29 +188,39 @@ inline double utc_to_ut1(double jd_utc, double dut1_seconds) {
 // ============================================================================
 
 /// Compute Greenwich Mean Sidereal Time from UT1 Julian Date.
-/// Uses the IAU formula from Vallado, Eq. 3-47.
-/// Returns GMST in radians, normalized to [0, 2*PI].
-inline double ut1_to_gmst(double jd_ut1) {
+///
+/// IAU 1982 expression in seconds form through t^3 (Vallado Eq. 3-47,
+/// seconds variant).  This is the Helio-parity formula; the previous
+/// hours-form implementation (t^2 only) agreed to about 1 ms but was not
+/// bit-identical with helio_ob, which golden-master fixtures require.
+///
+/// @param jd_ut1  UT1 Julian Date (UT1 approximated by UTC).
+/// @return GMST in radians, normalized to [0, 2*PI).
+inline double jd_to_gmst(double jd_ut1) {
     // Julian centuries from J2000.0.
     double t = (jd_ut1 - JD_J2000) / J2000_CENTURIES;
 
-    // Hours of UT1 (fractional part of JD * 24).
-    // JD convention: JD x.0 = noon, JD x.5 = midnight.
-    // Add 0.5 to convert from noon-based to midnight-based hours.
-    double ut1_hours = std::fmod(jd_ut1 + 0.5, 1.0) * 24.0;
-    if (ut1_hours < 0.0) {
-        ut1_hours += 24.0;
+    // GMST in seconds of time (IAU 1982 / Vallado Eq. 3-47 seconds form).
+    double gmst_sec = 67310.54841
+                    + (876600.0 * 3600.0 + 8640184.812866) * t
+                    + 0.093104 * t * t
+                    - 6.2e-6 * t * t * t;
+
+    // 240 seconds of time = 1 radian; normalize to [0, 2*PI).
+    double gmst_rad = (gmst_sec / 240.0) * (PI / 180.0);
+    gmst_rad = std::fmod(gmst_rad, TWO_PI);
+    if (gmst_rad < 0.0) {
+        gmst_rad += TWO_PI;
     }
+    return gmst_rad;
+}
 
-    // GMST in hours of time (Vallado Eq. 3-47).
-    double gmst_hours = 6.697374558
-                      + 0.06570982441908 * (jd_ut1 - JD_J2000)
-                      + 1.00273790935 * ut1_hours
-                      + 0.000026 * t * t;
-
-    // Convert hours to radians, normalize to [0, 2*PI].
-    double gmst_rad = gmst_hours * (TWO_PI / 24.0);
-    return std::fmod(gmst_rad, TWO_PI);
+/// Compute Greenwich Mean Sidereal Time from UT1 Julian Date.
+///
+/// Thin wrapper over jd_to_gmst() kept for existing callers
+/// (ground_track, pass_predictor, coordinate_frames).
+inline double ut1_to_gmst(double jd_ut1) {
+    return jd_to_gmst(jd_ut1);
 }
 
 /// Compute Greenwich Apparent Sidereal Time from UT1 Julian Date.
