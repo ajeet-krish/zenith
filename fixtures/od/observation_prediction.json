@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "case_id": "observation_prediction",
+  "module": "observations",
+  "function": "predict_observation",
+  "inputs": {
+    "r": [
+      5870.038832331244,
+      2105.1123759861425,
+      2655.9908098790975
+    ],
+    "v": [
+      -3.834279087703527,
+      4.125145637565049,
+      5.2046384923527444
+    ],
+    "station": "goldstone",
+    "jd": 2451545.5
+  },
+  "config": {},
+  "expected": {
+    "range_km": 3770.672103401636,
+    "range_rate_kms": 1.2099814285829487,
+    "ra_rad": 1.3310108908975202,
+    "dec_rad": -0.27356844525465396,
+    "az_rad": 1.7754522281696707,
+    "el_rad": -0.18644833400437447
+  },
+  "tolerances": {
+    "range_km": 1e-10,
+    "range_rate_kms": 1e-10,
+    "ra_rad": 1e-10,
+    "dec_rad": 1e-10,
+    "az_rad": 1e-10,
+    "el_rad": 1e-10
+  },
+  "meta": {
+    "source": "helio_ob",
+    "reference": "helio.observations.predict_observation"
+  }
+}

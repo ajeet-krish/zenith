@@ -98,3 +98,70 @@ export interface CoverageResult {
   avgPassDurationS: number
   totalPasses: number
 }
+
+// =============================================================================
+// Orbit Determination (OD) Types
+// =============================================================================
+
+/** A ground station used for OD observations. Handle is the WASM station id. */
+export interface ODStation {
+  id: string
+  name: string
+  latRad: number
+  lonRad: number
+  altKm: number
+  handle: number | null
+}
+
+/** Scalar observation type discriminator (matches C++ orbit::ObsType). */
+export type ODObservationType = 'range' | 'range_rate' | 'ra_dec' | 'az_el'
+
+/** A single observation at one epoch from one station. */
+export interface ODObservation {
+  timeJd: number
+  stationId: string
+  obsType: ODObservationType
+  values: number[]
+  sigmas: number[]
+}
+
+/** Default measurement sigmas (matches C++ orbit::ObsConfig / helio ObsConfig). */
+export interface ObsConfig {
+  sigmaRangeKm: number
+  sigmaRangeRateKms: number
+  sigmaAnglesRad: [number, number]
+  sigmaAzElRad: [number, number]
+}
+
+/** Configuration for the TS-side observation simulator. */
+export interface ObservationSimConfig {
+  noiseScale: number
+  cadenceSec: number
+  arcHours: number
+  stationNames: string[]
+}
+
+/** All six noise-free observables predicted for one epoch. */
+export interface ObsPrediction {
+  rangeKm: number
+  rangeRateKms: number
+  raRad: number
+  decRad: number
+  azRad: number
+  elRad: number
+}
+
+/** Analytic measurement partials H = dh/d(r, v), one row per observable. */
+export interface MeasurementPartials {
+  rangeH: number[]
+  rangeRateH: number[]
+  raH: number[]
+  decH: number[]
+}
+
+/** Result of a variational (STM) propagation. */
+export interface STMPropagationResult {
+  r: [number, number, number]
+  v: [number, number, number]
+  stm: number[]
+}

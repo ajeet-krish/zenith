@@ -4,6 +4,14 @@ import { MU_EARTH } from './constants'
 // Module-level state
 let wasmModule: any = null
 
+/**
+ * Accessor for the loaded WASM module (used by OD wrapper modules).
+ * Returns null when WASM has not been initialized or failed to load.
+ */
+export function getWasmModule(): any {
+  return wasmModule
+}
+
 // TypeScript fallback propagator state
 interface TSBucket {
   meanMotion: number

@@ -26,6 +26,18 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(googletest)
 
+# nlohmann/json v3.11.3 single-header library via FetchContent (same
+# no-vendoring convention as googletest; tests/install disabled).
+set(JSON_BuildTests OFF CACHE BOOL "" FORCE)
+set(JSON_Install OFF CACHE BOOL "" FORCE)
+FetchContent_Declare(
+    nlohmann_json
+    URL https://github.com/nlohmann/json/releases/download/v3.11.3/json.tar.xz
+    URL_HASH SHA256=d6c65aca6b1ed68e7a182f4757257b107ae403032760ed6ef121c9d55e81757d
+    DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+)
+FetchContent_MakeAvailable(nlohmann_json)
+
 enable_testing()
 
 add_executable(ZenithTests
@@ -34,11 +46,19 @@ add_executable(ZenithTests
     test_integrators_od.cpp
     test_stations.cpp
     test_observations.cpp
+    test_od_fixtures.cpp
 )
 
 # Headers live under wasm/src and are included as "zenith/xxx.hpp".
 target_include_directories(ZenithTests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../src)
-target_link_libraries(ZenithTests PRIVATE GTest::gtest_main)
+target_link_libraries(ZenithTests PRIVATE GTest::gtest_main nlohmann_json::nlohmann_json)
+
+# Absolute path to the golden-master fixture directory (native-only; the
+# compiled WASM never ships fixtures).
+get_filename_component(FIXTURES_OD_DIR
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../fixtures/od ABSOLUTE)
+target_compile_definitions(ZenithTests PRIVATE
+    FIXTURES_DIR="${FIXTURES_OD_DIR}")
 
 include(GoogleTest)
 gtest_discover_tests(ZenithTests)

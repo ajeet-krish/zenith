@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "helio_git_rev": "bdc9ba76a671e30a4544fa9674981f1fecad58a8",
+  "generated_utc": "2026-10-11T18:36:47Z",
+  "cases": [
+    {
+      "case_id": "kepler_solver",
+      "file": "kepler_solver.json",
+      "module": "kepler",
+      "function": "solve_kepler"
+    },
+    {
+      "case_id": "j2_stm_propagation",
+      "file": "j2_stm_propagation.json",
+      "module": "integrators",
+      "function": "propagate_with_stm"
+    },
+    {
+      "case_id": "force_jacobians",
+      "file": "force_jacobians.json",
+      "module": "force_models",
+      "function": "j2_accel_and_jacobian"
+    },
+    {
+      "case_id": "measurement_partials",
+      "file": "measurement_partials.json",
+      "module": "partials",
+      "function": "measurement_partials"
+    },
+    {
+      "case_id": "station_ecef",
+      "file": "station_ecef.json",
+      "module": "frames",
+      "function": "lla_to_ecef"
+    },
+    {
+      "case_id": "gmst",
+      "file": "gmst.json",
+      "module": "time_system",
+      "function": "jd_to_gmst"
+    },
+    {
+      "case_id": "observation_prediction",
+      "file": "observation_prediction.json",
+      "module": "observations",
+      "function": "predict_observation"
+    }
+  ]
+}

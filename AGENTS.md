@@ -5,8 +5,9 @@
 ```bash
 npm run dev          # Vite dev server at localhost:5173
 npm run build        # tsc -p tsconfig.build.json --noEmit && vite build
-npm run test         # vitest run (272 tests, ~1.5s)
+npm run test         # vitest run (346 tests, ~1.5s)
 npm run test:watch   # vitest watch mode
+npm run test:native  # Native C++ GoogleTest (52 tests, needs cmake)
 npm run typecheck    # tsc --noEmit
 npm run wasm:build   # Requires Emscripten (brew install emscripten)
 ```

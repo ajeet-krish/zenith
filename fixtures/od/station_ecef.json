@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "case_id": "station_ecef",
+  "module": "frames",
+  "function": "lla_to_ecef",
+  "inputs": {
+    "stations": {
+      "goldstone": {
+        "lat_rad": 0.6178465552059926,
+        "lon_rad": -2.038544566329377,
+        "alt_km": 1.0
+      },
+      "arecibo": {
+        "lat_rad": 0.3193952531149623,
+        "lon_rad": -1.1650072757062149,
+        "alt_km": 0.4
+      },
+      "tromsoe": {
+        "lat_rad": 1.2147491593880533,
+        "lon_rad": 0.32986722862692824,
+        "alt_km": 0.1
+      }
+    }
+  },
+  "config": {},
+  "expected": {
+    "goldstone_ecef": [
+      -2347.1157554837987,
+      -4646.499433985879,
+      3674.7091247868193
+    ],
+    "arecibo_ecef": [
+      2391.336526321806,
+      -5565.986513425679,
+      1990.0625459120895
+    ],
+    "tromsoe_ecef": [
+      2109.620433768311,
+      722.2845147198316,
+      5955.725252345503
+    ]
+  },
+  "tolerances": {
+    "goldstone_ecef": 1e-09,
+    "arecibo_ecef": 1e-09,
+    "tromsoe_ecef": 1e-09
+  },
+  "meta": {
+    "source": "helio_ob",
+    "reference": "helio.stations.GroundStation.position_ecef"
+  }
+}

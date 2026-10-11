@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "case_id": "force_jacobians",
+  "module": "force_models",
+  "function": "j2_accel_and_jacobian",
+  "inputs": {
+    "r": [
+      5870.038832331244,
+      2105.1123759861425,
+      2655.9908098790975
+    ]
+  },
+  "config": {},
+  "expected": {
+    "accel": [
+      -2.5095692151722593e-06,
+      -8.999813057718526e-07,
+      -1.0912404094725524e-05
+    ],
+    "jac": [
+      -9.438413717646798e-10,
+      -1.8516246279516598e-10,
+      6.012238482569739e-09,
+      -1.8516246279516598e-10,
+      -4.939246723890884e-10,
+      2.1561079915396894e-09,
+      6.012238482569739e-09,
+      2.1561079915396894e-09,
+      1.4377660441537683e-09
+    ]
+  },
+  "tolerances": {
+    "accel": 1e-09,
+    "jac": 1e-09
+  },
+  "meta": {
+    "source": "helio_ob",
+    "reference": "helio.forces.j2_accel_and_jacobian",
+    "note": "tolerances are relative"
+  }
+}

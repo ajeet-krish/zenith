@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "case_id": "gmst",
+  "module": "time_system",
+  "function": "jd_to_gmst",
+  "inputs": {
+    "jds": [
+      2451545.0,
+      2451545.5
+    ]
+  },
+  "config": {},
+  "expected": {
+    "gmst_j2000": 4.894961212823059,
+    "gmst_j2000_half": 1.7619699551359194
+  },
+  "tolerances": {
+    "gmst_j2000": 1e-12,
+    "gmst_j2000_half": 1e-12
+  },
+  "meta": {
+    "source": "helio_ob",
+    "reference": "helio.time_system.jd_to_gmst"
+  }
+}
