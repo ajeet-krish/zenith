@@ -38,6 +38,7 @@
 #include "zenith/stations.hpp"
 #include "zenith/observations.hpp"
 #include "zenith/partials.hpp"
+#include "zenith/iod_gauss.hpp"
 
 using namespace emscripten;
 
@@ -558,6 +559,149 @@ val od_propagate_with_stm_js(val state6, int tier, double rtol, double atol,
 }
 
 // =============================================================================
+// Orbit Determination (Phase 2): Gauss IOD, Herrick-Gibbs, Station Geometry
+// =============================================================================
+// WASM flat-array layouts (tech-lead design):
+//   od_gauss_iod input obs: 12 doubles = 3 obs x {jd, ra_rad, dec_rad, pad}
+//   od_gauss_iod config: 6 doubles = {mu, residual_tol_rad, enable_corr,
+//                        max_dc_iter, cond_singular, cond_warning}
+//   od_gauss_iod result: 16 doubles = {r[3], v[3], converged, iterations,
+//                        residual_norm, cond_number, error_code, ranges[3],
+//                        pad[2]}
+// Station geometry comes from g_od_stations handles (Phase 1 pattern).
+
+/// Station position in ECI at a given epoch.
+///
+/// @return Flat array [x, y, z] in ECI [km], or null on invalid handle.
+val od_station_position_eci_js(int handle, double jd) {
+    auto it = g_od_stations.find(handle);
+    if (it == g_od_stations.end()) {
+        return val::null();
+    }
+    const orbit::Vec3 r = it->second.position_eci(jd);
+    val result = val::array();
+    result.call<void>("push", r.x);
+    result.call<void>("push", r.y);
+    result.call<void>("push", r.z);
+    return result;
+}
+
+/// Station velocity in ECI at a given epoch (Earth-rotation term).
+///
+/// @return Flat array [vx, vy, vz] in ECI [km/s], or null on invalid
+///         handle.
+val od_station_velocity_eci_js(int handle, double jd) {
+    auto it = g_od_stations.find(handle);
+    if (it == g_od_stations.end()) {
+        return val::null();
+    }
+    const orbit::Vec3 v = it->second.velocity_eci(jd);
+    val result = val::array();
+    result.call<void>("push", v.x);
+    result.call<void>("push", v.y);
+    result.call<void>("push", v.z);
+    return result;
+}
+
+/// Elevation angle of an ECI target above the station horizon.
+///
+/// @return Elevation [rad], or null on invalid handle.
+val od_station_elevation_js(int handle, double rx, double ry, double rz,
+                            double jd) {
+    auto it = g_od_stations.find(handle);
+    if (it == g_od_stations.end()) {
+        return val::null();
+    }
+    return val(it->second.elevation_of(orbit::Vec3(rx, ry, rz), jd));
+}
+
+/// Herrick-Gibbs velocity at the middle of three ECI positions.
+///
+/// @return JS object {vx, vy, vz, status} (status is the GaussIodError
+///         int; 0 = OK, 2 = ERROR_INPUT for non-increasing epochs).
+val od_herrick_gibbs_js(double r1x, double r1y, double r1z,
+                        double r2x, double r2y, double r2z,
+                        double r3x, double r3y, double r3z,
+                        double t1, double t2, double t3, double mu) {
+    const orbit::HerrickGibbsResult hg = orbit::herrick_gibbs(
+        orbit::Vec3(r1x, r1y, r1z), orbit::Vec3(r2x, r2y, r2z),
+        orbit::Vec3(r3x, r3y, r3z), t1, t2, t3, mu);
+    val result = val::object();
+    result.set("vx", hg.v[0]);
+    result.set("vy", hg.v[1]);
+    result.set("vz", hg.v[2]);
+    result.set("status", static_cast<int>(hg.status));
+    return result;
+}
+
+/// Gauss angles-only IOD from three RA/Dec observations.
+///
+/// @param h1, h2, h3  Station handles (from od_station_create) for the
+///                    three observations.
+/// @param obs32       12 doubles: 3 obs x {jd, ra_rad, dec_rad, pad}.
+/// @param config6     6 doubles: {mu, residual_tol_rad, enable_corr
+///                    (0/1), max_dc_iter, cond_singular, cond_warning}.
+/// @return Flat array of 16 doubles per the Phase 2 layout above, or
+///         null if any station handle is invalid or the obs array is
+///         shorter than 12.
+val od_gauss_iod_js(int h1, int h2, int h3, val obs32, val config6) {
+    auto it1 = g_od_stations.find(h1);
+    auto it2 = g_od_stations.find(h2);
+    auto it3 = g_od_stations.find(h3);
+    if (it1 == g_od_stations.end() || it2 == g_od_stations.end() ||
+        it3 == g_od_stations.end()) {
+        return val::null();
+    }
+    if (obs32["length"].as<int>() < 12 || config6["length"].as<int>() < 6) {
+        return val::null();
+    }
+
+    orbit::GaussIodObs obs[3];
+    const orbit::ODGroundStation* stations[3] = {&it1->second, &it2->second,
+                                                 &it3->second};
+    for (int k = 0; k < 3; ++k) {
+        obs[k].time_jd = obs32[4 * k + 0].as<double>();
+        obs[k].ra_rad = obs32[4 * k + 1].as<double>();
+        obs[k].dec_rad = obs32[4 * k + 2].as<double>();
+        obs[k].station = stations[k];
+    }
+
+    orbit::GaussIodConfig config;
+    config.mu = config6[0].as<double>();
+    config.residual_tol_rad = config6[1].as<double>();
+    config.enable_correction = config6[2].as<double>() != 0.0;
+    // Defense-in-depth: clamp the iteration budget from untrusted WASM
+    // callers to the documented [1, 100] range.
+    config.max_dc_iter =
+        std::clamp(static_cast<int>(config6[3].as<double>()), 1, 100);
+    config.cond_singular = config6[4].as<double>();
+    config.cond_warning = config6[5].as<double>();
+
+    const orbit::GaussIodResult res = orbit::gauss_iod(obs, config);
+    const bool ok = res.status == orbit::GaussIodError::OK ||
+                    res.status == orbit::GaussIodError::WARNING_ILL_CONDITIONED;
+
+    val out = val::array();
+    for (double v : res.r) {
+        out.call<void>("push", v);
+    }
+    for (double v : res.v) {
+        out.call<void>("push", v);
+    }
+    out.call<void>("push", ok ? 1.0 : 0.0);
+    out.call<void>("push", static_cast<double>(res.iterations));
+    out.call<void>("push", res.residual_norm);
+    out.call<void>("push", res.condition_number);
+    out.call<void>("push", static_cast<double>(res.status));
+    for (double v : res.ranges) {
+        out.call<void>("push", v);
+    }
+    out.call<void>("push", 0.0);  // pad[0]
+    out.call<void>("push", 0.0);  // pad[1]
+    return out;
+}
+
+// =============================================================================
 // Embind Registration
 // =============================================================================
 
@@ -580,4 +724,9 @@ EMSCRIPTEN_BINDINGS(zenith) {
     function("od_predict_observation", &od_predict_observation_js);
     function("od_measurement_partials", &od_measurement_partials_js);
     function("od_propagate_with_stm", &od_propagate_with_stm_js);
+    function("od_station_position_eci", &od_station_position_eci_js);
+    function("od_station_velocity_eci", &od_station_velocity_eci_js);
+    function("od_station_elevation", &od_station_elevation_js);
+    function("od_herrick_gibbs", &od_herrick_gibbs_js);
+    function("od_gauss_iod", &od_gauss_iod_js);
 }

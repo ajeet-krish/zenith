@@ -19,6 +19,7 @@
 
 #include "zenith/force_models.hpp"
 #include "zenith/integrators.hpp"
+#include "zenith/iod_gauss.hpp"
 #include "zenith/kepler.hpp"
 #include "zenith/matrix_ops.hpp"
 #include "zenith/observations.hpp"
@@ -109,7 +110,11 @@ TEST(ODFixtures, ManifestListsPhaseOneCases) {
     const std::vector<std::string> required = {
         "kepler_solver",     "j2_stm_propagation", "force_jacobians",
         "measurement_partials", "station_ecef",    "gmst",
-        "observation_prediction"};
+        "observation_prediction",
+        // Phase 2 (Gauss IOD + Herrick-Gibbs).
+        "gauss_iod_leo_3sta_clean", "gauss_iod_leo_1sta_clean",
+        "gauss_iod_meo_ecc_clean",  "gauss_iod_geo_1sta_clean",
+        "gauss_iod_leo_noisy_seed42", "herrick_gibbs"};
     for (const auto& id : required) {
         bool found = false;
         for (const auto& entry : cases) {
@@ -322,4 +327,101 @@ TEST(ODFixtures, ObservationPrediction) {
                 tolerances.at("az_rad").get<double>());
     EXPECT_NEAR(pred.el_rad, expected.at("el_rad").get<double>(),
                 tolerances.at("el_rad").get<double>());
+}
+
+// ---------------------------------------------------------------------------
+// Phase 2: gauss_iod_* and herrick_gibbs dispatch
+// ---------------------------------------------------------------------------
+
+namespace {
+
+/// Run one gauss_iod fixture case on its baked observations and compare
+/// the recovered state and status against the helio export.
+void run_gauss_iod_case(const std::string& case_id) {
+    const json c = load_case(case_id);
+    const json& inputs = c.at("inputs");
+    const auto jd = inputs.at("jd").get<std::vector<double>>();
+    const auto ra = inputs.at("ra_rad").get<std::vector<double>>();
+    const auto dec = inputs.at("dec_rad").get<std::vector<double>>();
+    const auto station_names =
+        inputs.at("stations").get<std::vector<std::string>>();
+    ASSERT_EQ(jd.size(), 3u);
+    ASSERT_EQ(ra.size(), 3u);
+    ASSERT_EQ(dec.size(), 3u);
+    ASSERT_EQ(station_names.size(), 3u);
+
+    // Station lifetimes span the gauss_iod call.
+    const orbit::ODGroundStation s0 = station_from_name(station_names[0]);
+    const orbit::ODGroundStation s1 = station_from_name(station_names[1]);
+    const orbit::ODGroundStation s2 = station_from_name(station_names[2]);
+    const orbit::ODGroundStation* sts[3] = {&s0, &s1, &s2};
+
+    orbit::GaussIodObs obs[3];
+    for (int k = 0; k < 3; ++k) {
+        obs[k].time_jd = jd[k];
+        obs[k].ra_rad = ra[k];
+        obs[k].dec_rad = dec[k];
+        obs[k].station = sts[k];
+    }
+
+    orbit::GaussIodConfig config;
+    config.mu = c.at("config").at("mu").get<double>();
+    config.residual_tol_rad = c.at("config").at("residual_tol_rad").get<double>();
+    config.max_dc_iter = c.at("config").at("max_dc_iter").get<int>();
+
+    const orbit::GaussIodResult res = orbit::gauss_iod(obs, config);
+    const json& expected = c.at("expected");
+    const json& tolerances = c.at("tolerances");
+
+    EXPECT_EQ(static_cast<int>(res.status),
+              expected.at("status").get<int>())
+        << case_id << " status";
+    expect_near_flat({res.r[0], res.r[1], res.r[2]}, expected.at("r"),
+                     tolerances.at("r").get<double>(), false, "r");
+    expect_near_flat({res.v[0], res.v[1], res.v[2]}, expected.at("v"),
+                     tolerances.at("v").get<double>(), false, "v");
+}
+
+}  // namespace
+
+TEST(ODFixtures, GaussIodLeo3StaClean) {
+    run_gauss_iod_case("gauss_iod_leo_3sta_clean");
+}
+
+TEST(ODFixtures, GaussIodLeo1StaClean) {
+    run_gauss_iod_case("gauss_iod_leo_1sta_clean");
+}
+
+TEST(ODFixtures, GaussIodMeoEccClean) {
+    run_gauss_iod_case("gauss_iod_meo_ecc_clean");
+}
+
+TEST(ODFixtures, GaussIodGeo1StaClean) {
+    run_gauss_iod_case("gauss_iod_geo_1sta_clean");
+}
+
+TEST(ODFixtures, GaussIodLeoNoisySeed42) {
+    // Baked noisy RA/Dec values from the helio export (numpy RNG seed
+    // 42); C++ consumes the baked angles directly.
+    run_gauss_iod_case("gauss_iod_leo_noisy_seed42");
+}
+
+TEST(ODFixtures, HerrickGibbs) {
+    const json c = load_case("herrick_gibbs");
+    const Vec3 r1 = vec3_from_json(c.at("inputs").at("r1"));
+    const Vec3 r2 = vec3_from_json(c.at("inputs").at("r2"));
+    const Vec3 r3 = vec3_from_json(c.at("inputs").at("r3"));
+    const double t1 = c.at("inputs").at("t1").get<double>();
+    const double t2 = c.at("inputs").at("t2").get<double>();
+    const double t3 = c.at("inputs").at("t3").get<double>();
+    const double mu = c.at("inputs").at("mu").get<double>();
+
+    const orbit::HerrickGibbsResult hg =
+        orbit::herrick_gibbs(r1, r2, r3, t1, t2, t3, mu);
+    const json& expected = c.at("expected");
+    const double tol = c.at("tolerances").at("v2").get<double>();
+
+    EXPECT_EQ(static_cast<int>(hg.status), expected.at("status").get<int>());
+    expect_near_flat({hg.v[0], hg.v[1], hg.v[2]}, expected.at("v2"), tol,
+                     false, "v2");
 }

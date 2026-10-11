@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "helio_git_rev": "bdc9ba76a671e30a4544fa9674981f1fecad58a8",
-  "generated_utc": "2026-10-11T18:36:47Z",
+  "generated_utc": "2026-10-11T19:47:12Z",
   "cases": [
     {
       "case_id": "kepler_solver",
@@ -44,6 +44,42 @@
       "file": "observation_prediction.json",
       "module": "observations",
       "function": "predict_observation"
+    },
+    {
+      "case_id": "gauss_iod_leo_3sta_clean",
+      "file": "gauss_iod_leo_3sta_clean.json",
+      "module": "iod_gauss",
+      "function": "gauss_iod"
+    },
+    {
+      "case_id": "gauss_iod_leo_1sta_clean",
+      "file": "gauss_iod_leo_1sta_clean.json",
+      "module": "iod_gauss",
+      "function": "gauss_iod"
+    },
+    {
+      "case_id": "gauss_iod_meo_ecc_clean",
+      "file": "gauss_iod_meo_ecc_clean.json",
+      "module": "iod_gauss",
+      "function": "gauss_iod"
+    },
+    {
+      "case_id": "gauss_iod_geo_1sta_clean",
+      "file": "gauss_iod_geo_1sta_clean.json",
+      "module": "iod_gauss",
+      "function": "gauss_iod"
+    },
+    {
+      "case_id": "gauss_iod_leo_noisy_seed42",
+      "file": "gauss_iod_leo_noisy_seed42.json",
+      "module": "iod_gauss",
+      "function": "gauss_iod"
+    },
+    {
+      "case_id": "herrick_gibbs",
+      "file": "herrick_gibbs.json",
+      "module": "iod_gauss",
+      "function": "herrick_gibbs"
     }
   ]
 }

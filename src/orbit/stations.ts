@@ -3,10 +3,11 @@
 // =============================================================================
 // Handle-based wrappers around the od_station_* embind exports. Follows the
 // wasmLoader.ts WASM-first pattern: every call degrades gracefully (returns
-// null) when the WASM module is not loaded. A small TS-side registry mirrors
-// the station geometry so the ECI/ECEF helpers keep working in pure-JS demo
-// mode and in unit tests (the embind surface currently exports only
-// create/destroy; position/velocity/elevation are computed here in TS).
+// null) when the WASM module is not loaded. The Phase 2 exports
+// (od_station_position_eci / od_station_velocity_eci / od_station_elevation)
+// return flat arrays/scalars per wasm/src/exports.cpp; a small TS-side
+// registry mirrors the station geometry so the ECI/ECEF helpers keep
+// working in pure-JS demo mode and in unit tests.
 
 import { getWasmModule } from './wasmLoader'
 import { OMEGA_EARTH, DEG_TO_RAD } from './constants'
@@ -122,8 +123,9 @@ export function stationPositionEci(handle: number, jd: number): { x: number; y: 
     const mod = getWasmModule()
     if (mod && typeof mod.od_station_position_eci === 'function') {
         try {
+            // WASM returns a flat array [x, y, z] (exports.cpp contract).
             const p = mod.od_station_position_eci(handle, jd)
-            if (p) return { x: p.x, y: p.y, z: p.z }
+            if (p && p.length >= 3) return { x: p[0], y: p[1], z: p[2] }
         } catch (e) {
             console.warn('od_station_position_eci failed, using TS fallback:', e)
         }
@@ -140,8 +142,9 @@ export function stationVelocityEci(handle: number, jd: number): { x: number; y: 
     const mod = getWasmModule()
     if (mod && typeof mod.od_station_velocity_eci === 'function') {
         try {
+            // WASM returns a flat array [vx, vy, vz] (exports.cpp contract).
             const v = mod.od_station_velocity_eci(handle, jd)
-            if (v) return { x: v.x, y: v.y, z: v.z }
+            if (v && v.length >= 3) return { x: v[0], y: v[1], z: v[2] }
         } catch (e) {
             console.warn('od_station_velocity_eci failed, using TS fallback:', e)
         }

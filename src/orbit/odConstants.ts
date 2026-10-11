@@ -4,8 +4,8 @@
 // Values match the C++ core (wasm/src/zenith/od_constants.hpp,
 // wasm/src/zenith/stations.hpp) and helio_ob so golden-master fixtures agree.
 
-import { DEG_TO_RAD, RAD_TO_DEG } from './constants'
-import type { ObsConfig } from './types'
+import { DEG_TO_RAD, MU_EARTH, RAD_TO_DEG } from './constants'
+import type { GaussIodConfig, ObsConfig } from './types'
 
 // =============================================================================
 // Estimator Default Measurement Sigmas
@@ -29,6 +29,20 @@ export const DEFAULT_OBS_CONFIG: ObsConfig = {
   sigmaRangeRateKms: SIGMA_RANGE_RATE_KMS,
   sigmaAnglesRad: [SIGMA_ANGLES_RAD, SIGMA_ANGLES_RAD],
   sigmaAzElRad: [SIGMA_AZ_EL_RAD, SIGMA_AZ_EL_RAD],
+}
+
+// =============================================================================
+// Gauss IOD Defaults (Phase 2)
+// =============================================================================
+
+/** Default Gauss IOD configuration (matches C++ orbit::GaussIodConfig). */
+export const DEFAULT_GAUSS_IOD_CONFIG: GaussIodConfig = {
+  mu: MU_EARTH,
+  residualTolRad: 1.0e-6,
+  maxDcIter: 25,
+  enableCorrection: true,
+  condSingular: 1.0e12,
+  condWarning: 1.0e8,
 }
 
 // =============================================================================

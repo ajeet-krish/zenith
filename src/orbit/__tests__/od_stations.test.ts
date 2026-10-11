@@ -18,7 +18,14 @@ vi.mock('@/orbit/wasmLoader', () => ({
 
 const mockGetWasmModule = vi.mocked(getWasmModule)
 
-function fakeModule(overrides?: Record<string, unknown>) {
+/** Fake WASM module with the Phase 1 station exports plus any overrides. */
+interface FakeWasmModule {
+  od_station_create: ReturnType<typeof vi.fn>
+  od_station_destroy: ReturnType<typeof vi.fn>
+  [key: string]: unknown
+}
+
+function fakeModule(overrides?: Record<string, unknown>): FakeWasmModule {
   return {
     od_station_create: vi.fn(() => 42),
     od_station_destroy: vi.fn(),
@@ -173,6 +180,92 @@ describe('ts geometry helpers', () => {
     expect(x).toBeCloseTo(6378.137, 6)
     expect(y).toBeCloseTo(0, 12)
     expect(z).toBeCloseTo(0, 12)
+  })
+})
+
+// =============================================================================
+// Station geometry WASM-primary path (Phase 2 exports present)
+// =============================================================================
+// The C++ exports return flat arrays [x, y, z] / [vx, vy, vz] and a bare
+// elevation scalar (wasm/src/exports.cpp). These tests prove the WASM path
+// wins and the TS fallback math is never consulted: handle 4242 is never
+// registered in the TS-side registry, so the fallback could only return
+// null, while the mocked WASM exports return distinctive values.
+
+describe('station geometry WASM-primary path', () => {
+  it('stationPositionEci maps the WASM flat array and skips the TS fallback', () => {
+    const mod = fakeModule({
+      od_station_position_eci: vi.fn(() => [111.0, 222.0, 333.0]),
+    })
+    mockGetWasmModule.mockReturnValue(mod)
+    const pos = stationPositionEci(4242, 2451545.0)
+    expect(pos).toEqual({ x: 111.0, y: 222.0, z: 333.0 })
+    expect(mod.od_station_position_eci).toHaveBeenCalledWith(4242, 2451545.0)
+  })
+
+  it('stationVelocityEci maps the WASM flat array and skips the TS fallback', () => {
+    const mod = fakeModule({
+      od_station_velocity_eci: vi.fn(() => [0.1, 0.2, 0.3]),
+    })
+    mockGetWasmModule.mockReturnValue(mod)
+    expect(stationVelocityEci(4242, 2451545.0)).toEqual({ x: 0.1, y: 0.2, z: 0.3 })
+    expect(mod.od_station_velocity_eci).toHaveBeenCalledWith(4242, 2451545.0)
+  })
+
+  it('stationElevation uses the WASM scalar and skips the TS fallback', () => {
+    const mod = fakeModule({
+      od_station_elevation: vi.fn(() => 0.7853981633974483),
+    })
+    mockGetWasmModule.mockReturnValue(mod)
+    const el = stationElevation(4242, { x: 6778, y: 0, z: 0 }, 2451545.0)
+    expect(el).toBeCloseTo(0.7853981633974483, 12)
+    expect(mod.od_station_elevation).toHaveBeenCalledWith(4242, 6778, 0, 0, 2451545.0)
+  })
+
+  it('prefers WASM values over differing registry fallback geometry', () => {
+    // Handle 77 is registered with real geodetic geometry, so the TS
+    // fallback would return an Earth-radius position (~6378 km). Distinctive
+    // mock values prove the WASM path won.
+    const mod = fakeModule({
+      od_station_create: vi.fn(() => 77),
+      od_station_position_eci: vi.fn(() => [1.5, 2.5, 3.5]),
+    })
+    mockGetWasmModule.mockReturnValue(mod)
+    const h = createStation('gs', GOLDSTONE.latRad, GOLDSTONE.lonRad, GOLDSTONE.altKm)!
+    expect(h).toBe(77)
+    expect(stationPositionEci(h, 2451545.0)).toEqual({ x: 1.5, y: 2.5, z: 3.5 })
+  })
+
+  it('falls back to TS geometry only when the WASM export is absent', () => {
+    const mod = fakeModule()
+    mockGetWasmModule.mockReturnValue(mod)
+    const h = createStation('gs', 0.0, 0.0, 0.0)!
+    const pos = stationPositionEci(h, 2451545.0)!
+    const mag = Math.sqrt(pos.x ** 2 + pos.y ** 2 + pos.z ** 2)
+    expect(mag).toBeGreaterThan(6300)
+    expect(mag).toBeLessThan(6500)
+  })
+
+  it('falls back to TS geometry when the WASM call throws', () => {
+    const mod = fakeModule({
+      od_station_position_eci: vi.fn(() => { throw new Error('stale handle') }),
+    })
+    mockGetWasmModule.mockReturnValue(mod)
+    const h = createStation('gs', 0.0, 0.0, 0.0)!
+    const pos = stationPositionEci(h, 2451545.0)
+    expect(pos).not.toBeNull()
+    const mag = Math.sqrt(pos!.x ** 2 + pos!.y ** 2 + pos!.z ** 2)
+    expect(mag).toBeGreaterThan(6300)
+    expect(mag).toBeLessThan(6500)
+  })
+
+  it('returns null when WASM reports an unknown handle and the registry has no entry', () => {
+    const mod = fakeModule({
+      // Real WASM returns null for handles it does not know.
+      od_station_position_eci: vi.fn(() => null),
+    })
+    mockGetWasmModule.mockReturnValue(mod)
+    expect(stationPositionEci(4242, 2451545.0)).toBeNull()
   })
 })
 

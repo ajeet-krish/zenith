@@ -46,6 +46,7 @@ add_executable(ZenithTests
     test_integrators_od.cpp
     test_stations.cpp
     test_observations.cpp
+    test_iod_gauss.cpp
     test_od_fixtures.cpp
 )
 

@@ -1,0 +1,80 @@
+{
+  "schema_version": 1,
+  "case_id": "gauss_iod_geo_1sta_clean",
+  "module": "iod_gauss",
+  "function": "gauss_iod",
+  "inputs": {
+    "elements": [
+      42164.137,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.7853981633974483
+    ],
+    "jd0": 2460310.5,
+    "dts_s": [
+      0.0,
+      1200.0,
+      2400.0
+    ],
+    "stations": [
+      "goldstone",
+      "goldstone",
+      "goldstone"
+    ],
+    "jd": [
+      2460310.5,
+      2460310.513888889,
+      2460310.527777778
+    ],
+    "ra_rad": [
+      0.9003084212829274,
+      0.9878139180142966,
+      1.0753194147463667
+    ],
+    "dec_rad": [
+      -0.09171206988657105,
+      -0.0917120687728581,
+      -0.09171206765898456
+    ],
+    "noise_seed": -1
+  },
+  "config": {
+    "mu": 398600.4418,
+    "residual_tol_rad": 1e-06,
+    "max_dc_iter": 25
+  },
+  "expected": {
+    "r": [
+      27094.86207509397,
+      32306.07805826427,
+      -0.0004904600597858133
+    ],
+    "v": [
+      -2.3557993661528247,
+      1.9757909995006628,
+      -1.6435920429168966e-09
+    ],
+    "status": 0,
+    "truth_r": [
+      27094.86351254261,
+      32306.080235637626,
+      0.0
+    ],
+    "truth_v": [
+      -2.3557995340964153,
+      1.9757911320000174,
+      0.0
+    ]
+  },
+  "tolerances": {
+    "r": 0.01,
+    "v": 1e-06
+  },
+  "meta": {
+    "source": "helio_ob",
+    "reference": "helio.iod_gauss.gauss_iod",
+    "note": "noise-free GEO recovery from one station, 20-minute spacing; loosened r/v tolerance for the flat range manifold"
+  }
+}

@@ -7,9 +7,11 @@ import { EclipsePanel } from './EclipsePanel';
 import { PassPredictorPanel } from './PassPredictorPanel';
 import { MonteCarloPanel } from './MonteCarloPanel';
 import { CoveragePanel } from './CoveragePanel';
+import { IodPanel } from './IodPanel';
+import type { AnalysisTool } from '@/orbit/types';
 
 interface ToolSection {
-  id: string;
+  id: AnalysisTool;
   label: string;
   component: React.ReactNode;
 }
@@ -23,6 +25,7 @@ const TOOLS: ToolSection[] = [
   { id: 'passpredict', label: 'PASS PREDICTOR', component: <PassPredictorPanel /> },
   { id: 'montecarlo', label: 'MONTE CARLO', component: <MonteCarloPanel /> },
   { id: 'coverage', label: 'WALKER CONSTELLATION', component: <CoveragePanel /> },
+  { id: 'gaussiod', label: 'GAUSS IOD', component: <IodPanel /> },
 ];
 
 /**

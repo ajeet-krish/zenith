@@ -1,15 +1,21 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { useODStore } from '../useODStore'
 import { createStation, destroyStation } from '@/orbit/stations'
-import type { ODObservation } from '@/orbit/types'
+import { runGaussIod } from '@/orbit/iodGauss'
+import type { GaussIodObservation, GaussIodTsResult, ODObservation } from '@/orbit/types'
 
 vi.mock('@/orbit/stations', () => ({
   createStation: vi.fn(() => 101),
   destroyStation: vi.fn(),
 }))
 
+vi.mock('@/orbit/iodGauss', () => ({
+  runGaussIod: vi.fn(),
+}))
+
 const mockCreateStation = vi.mocked(createStation)
 const mockDestroyStation = vi.mocked(destroyStation)
+const mockRunGaussIod = vi.mocked(runGaussIod)
 
 const GOLDSTONE = { name: 'goldstone', latRad: 0.6178, lonRad: -2.0384, altKm: 1.0 }
 
@@ -24,14 +30,38 @@ function makeObs(overrides?: Partial<ODObservation>): ODObservation {
   }
 }
 
+function makeIodObs(overrides?: Partial<GaussIodObservation>): GaussIodObservation {
+  return {
+    epochJd: 2460310.5,
+    raRad: 1.2,
+    decRad: -0.3,
+    stationId: 'sta-1',
+    ...overrides,
+  }
+}
+
+const CANNED_IOD_RESULT: GaussIodTsResult = {
+  r: [6778.1, 123.4, 456.7],
+  v: [1.5, -2.5, 7.6],
+  status: 0,
+  statusMessage: 'Solution found with nominal geometry',
+  converged: true,
+  iterations: 4,
+  residualNorm: 5e-7,
+  conditionNumber: 1.2e6,
+  ranges: [1500.1, 1500.2, 1500.3],
+}
+
 beforeEach(() => {
   vi.clearAllMocks()
   mockCreateStation.mockReturnValue(101)
+  mockRunGaussIod.mockReturnValue(null)
   useODStore.setState({
     stations: [],
     selectedStationId: null,
     observations: [],
     simConfig: { noiseScale: 1, cadenceSec: 60, arcHours: 1, stationNames: ['goldstone'] },
+    iodResult: null,
   })
 })
 
@@ -59,6 +89,10 @@ describe('Initial State', () => {
       arcHours: 1,
       stationNames: ['goldstone'],
     })
+  })
+
+  it('iodResult is null', () => {
+    expect(useODStore.getState().iodResult).toBeNull()
   })
 })
 
@@ -216,6 +250,65 @@ describe('observation actions', () => {
 })
 
 // =============================================================================
+// Gauss IOD (runIod / clearIodResult)
+// =============================================================================
+
+describe('runIod', () => {
+  const THREE_OBS = [makeIodObs(), makeIodObs({ epochJd: 2460310.507, stationId: 'sta-2' }), makeIodObs({ epochJd: 2460310.514, stationId: 'sta-3' })]
+
+  it('stores the solver result', () => {
+    mockRunGaussIod.mockReturnValue(CANNED_IOD_RESULT)
+    useODStore.getState().runIod(THREE_OBS)
+    expect(mockRunGaussIod).toHaveBeenCalledWith(THREE_OBS, undefined)
+    expect(useODStore.getState().iodResult).toEqual(CANNED_IOD_RESULT)
+  })
+
+  it('forwards a config override to the solver', () => {
+    mockRunGaussIod.mockReturnValue(CANNED_IOD_RESULT)
+    useODStore.getState().runIod(THREE_OBS, { mu: 123456 })
+    expect(mockRunGaussIod).toHaveBeenCalledWith(THREE_OBS, { mu: 123456 })
+  })
+
+  it('stores null when the solver returns null (WASM absent)', () => {
+    useODStore.getState().runIod(THREE_OBS)
+    expect(mockRunGaussIod).toHaveBeenCalled()
+    expect(useODStore.getState().iodResult).toBeNull()
+  })
+
+  it('clears a previous result when the new solve fails', () => {
+    mockRunGaussIod.mockReturnValueOnce(CANNED_IOD_RESULT)
+    useODStore.getState().runIod(THREE_OBS)
+    expect(useODStore.getState().iodResult).toEqual(CANNED_IOD_RESULT)
+    mockRunGaussIod.mockReturnValueOnce(null)
+    useODStore.getState().runIod(THREE_OBS)
+    expect(useODStore.getState().iodResult).toBeNull()
+  })
+
+  it('stores null when the solver throws', () => {
+    mockRunGaussIod.mockImplementation(() => {
+      throw new Error('solver exploded')
+    })
+    expect(() => useODStore.getState().runIod(THREE_OBS)).not.toThrow()
+    expect(useODStore.getState().iodResult).toBeNull()
+  })
+})
+
+describe('clearIodResult', () => {
+  it('clears the stored result', () => {
+    mockRunGaussIod.mockReturnValue(CANNED_IOD_RESULT)
+    useODStore.getState().runIod([makeIodObs()])
+    expect(useODStore.getState().iodResult).toEqual(CANNED_IOD_RESULT)
+    useODStore.getState().clearIodResult()
+    expect(useODStore.getState().iodResult).toBeNull()
+  })
+
+  it('is a no-op when no result is stored', () => {
+    useODStore.getState().clearIodResult()
+    expect(useODStore.getState().iodResult).toBeNull()
+  })
+})
+
+// =============================================================================
 // clearAll
 // =============================================================================
 
@@ -249,5 +342,13 @@ describe('clearAll', () => {
     useODStore.getState().addStation('a', 0.1, 0.2, 0.3)
     useODStore.getState().clearAll()
     expect(mockDestroyStation).not.toHaveBeenCalled()
+  })
+
+  it('also clears iodResult', () => {
+    mockRunGaussIod.mockReturnValue(CANNED_IOD_RESULT)
+    useODStore.getState().runIod([makeIodObs()])
+    expect(useODStore.getState().iodResult).toEqual(CANNED_IOD_RESULT)
+    useODStore.getState().clearAll()
+    expect(useODStore.getState().iodResult).toBeNull()
   })
 })

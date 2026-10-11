@@ -1,6 +1,14 @@
 import { create } from 'zustand';
 import { createStation, destroyStation } from '@/orbit/stations';
-import type { ObservationSimConfig, ODStation, ODObservation } from '@/orbit/types';
+import { runGaussIod } from '@/orbit/iodGauss';
+import type {
+  GaussIodConfig,
+  GaussIodObservation,
+  GaussIodTsResult,
+  ObservationSimConfig,
+  ODStation,
+  ODObservation,
+} from '@/orbit/types';
 
 // =============================================================================
 // Orbit Determination Store
@@ -25,6 +33,9 @@ interface ODState {
   observations: ODObservation[];
   simConfig: ObservationSimConfig;
 
+  // Gauss IOD
+  iodResult: GaussIodTsResult | null;
+
   // Actions
   addStation: (name: string, latRad: number, lonRad: number, altKm: number) => void;
   removeStation: (id: string) => void;
@@ -33,6 +44,8 @@ interface ODState {
   setObservations: (obs: ODObservation[]) => void;
   appendObservations: (obs: ODObservation[]) => void;
   clearObservations: () => void;
+  runIod: (observations: GaussIodObservation[], config?: Partial<GaussIodConfig>) => void;
+  clearIodResult: () => void;
   clearAll: () => void;
 }
 
@@ -56,6 +69,7 @@ export const useODStore = create<ODState>((set, get) => ({
   selectedStationId: null,
   observations: [],
   simConfig: { ...DEFAULT_SIM_CONFIG },
+  iodResult: null,
 
   // Actions
   addStation: (name, latRad, lonRad, altKm) => {
@@ -110,6 +124,19 @@ export const useODStore = create<ODState>((set, get) => ({
     set({ observations: [] });
   },
 
+  runIod: (observations, config) => {
+    try {
+      // Null result (no WASM, bad input) clears any previous solve.
+      set({ iodResult: runGaussIod(observations, config) });
+    } catch {
+      set({ iodResult: null });
+    }
+  },
+
+  clearIodResult: () => {
+    set({ iodResult: null });
+  },
+
   clearAll: () => {
     const state = get();
     for (const station of state.stations) {
@@ -122,6 +149,7 @@ export const useODStore = create<ODState>((set, get) => ({
       selectedStationId: null,
       observations: [],
       simConfig: { ...DEFAULT_SIM_CONFIG },
+      iodResult: null,
     });
   },
 }));
