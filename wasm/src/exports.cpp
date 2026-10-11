@@ -39,6 +39,7 @@
 #include "zenith/observations.hpp"
 #include "zenith/partials.hpp"
 #include "zenith/iod_gauss.hpp"
+#include "zenith/od_batch.hpp"
 
 using namespace emscripten;
 
@@ -702,6 +703,204 @@ val od_gauss_iod_js(int h1, int h2, int h3, val obs32, val config6) {
 }
 
 // =============================================================================
+// Orbit Determination (Phase 3): Batch Least-Squares OD
+// =============================================================================
+// WASM flat-array layouts (tech-lead Phase 3 design):
+//   od_batch_solve obs table: N concatenated records of
+//     [time_jd(1), sta_pos_eci(3), sta_vel_eci(3), obs_type(1), ndim(1),
+//      values(ndim), sigmas(ndim)]
+//     i.e. 9 + 2*ndim doubles per record (9 header fields: time_jd,
+//     sta_pos x3, sta_vel x3, obs_type, ndim). Station ECI geometry is
+//     PRE-RESOLVED by the caller via od_station_position_eci /
+//     od_station_velocity_eci at each observation epoch (no station
+//     handles inside the solver; it is a pure compute kernel).
+//     obs_type: 0=RANGE, 1=RANGE_RATE, 2=RA_DEC (3=AZ_EL is rejected by
+//     the solver and returns status ERROR_INPUT). ndim must match the
+//     type (1, 1, 2 respectively).
+//   od_batch_solve state6: 6 doubles [rx, ry, rz, vx, vy, vz] ECI guess
+//     at epoch_jd [km, km/s].
+//   od_batch_solve config10: 10 doubles
+//     {mu, force_tier (0=two-body, 1=J2), max_iter, tol_pos_km,
+//      tol_vel_kms, tol_wrms_rel, sigma_edit, edit_max_fraction,
+//      edit_max_rounds, enable_editing (0/1)}.
+//     Pass an empty array for defaults; short arrays apply partially
+//     over defaults. mu is informational (arc propagation uses the
+//     compiled MU_EARTH, helio batch_od parity).
+//   od_batch_solve apriori42: 42 doubles {x0(6), cov(36 row-major)}, or
+//     null / empty for no a-priori constraint. Non-SPD covariances are
+//     rejected with status ERROR_A_PRIORI_INVALID.
+//   od_batch_solve result: flat array
+//     [state(6), cov(36 row-major), formal_sigmas(6), iterations(1),
+//      converged(1), wrms(1), reduced_chi2(1; NaN when n_active <= 6),
+//      edited_count(1), n_active(1), status(1 BatchError int),
+//      n_residual_rows(1), residual_rows(N x 14)]
+//     14 doubles per residual row:
+//     {time_jd, obs_type, ndim, values(2), computed(2), residual(2),
+//      sigma(2), normalized(2), edited (0/1)}.
+//     For RA_DEC records each of the two scalar rows carries its own
+//     component in [0] and the companion component in [1] (RA row =
+//     [RA, Dec], Dec row = [Dec, RA]). Tables with more than
+//     MAX_OBS_RECORDS records are rejected with status ERROR_INPUT.
+//   od_batch_config_defaults: 10 doubles in config10 order.
+// status codes (orbit::BatchError): 0=OK (converged), 1=ERROR_INPUT,
+//   2=ERROR_NOT_CONVERGED, 3=ERROR_SINGULAR_N, 4=ERROR_INTEGRATION,
+//   5=ERROR_A_PRIORI_INVALID.
+
+/// Upper bound on observation records accepted by od_batch_solve
+/// (defense-in-depth against pathological JS inputs).
+constexpr int kMaxObsRecords = 10000;
+
+/// Empty 56-double result header with the given status and zero
+/// residual rows (malformed / oversized input path).
+val od_batch_error_header(orbit::BatchError status) {
+    val out = val::array();
+    for (int i = 0; i < 54; ++i) {
+        out.call<void>("push", 0.0);
+    }
+    out.call<void>("push", static_cast<double>(status));
+    out.call<void>("push", 0.0);  // n_residual_rows
+    return out;
+}
+
+/// Default batch OD configuration as a flat 10-double array (config10
+/// layout above).
+val od_batch_config_defaults_js() {
+    orbit::BatchConfig cfg;
+    val out = val::array();
+    out.call<void>("push", cfg.mu);
+    out.call<void>("push", static_cast<double>(cfg.force_tier));
+    out.call<void>("push", static_cast<double>(cfg.max_iter));
+    out.call<void>("push", cfg.tol_pos_km);
+    out.call<void>("push", cfg.tol_vel_kms);
+    out.call<void>("push", cfg.tol_wrms_rel);
+    out.call<void>("push", cfg.sigma_edit);
+    out.call<void>("push", cfg.edit_max_fraction);
+    out.call<void>("push", static_cast<double>(cfg.edit_max_rounds));
+    out.call<void>("push", cfg.enable_editing ? 1.0 : 0.0);
+    return out;
+}
+
+/// Batch least-squares orbit determination (Phase 3).
+///
+/// @param obs_flat   Observation table (flat array; layout above). May
+///                   contain zero observations (returns status
+///                   ERROR_INPUT with an empty result). Tables with
+///                   more than kMaxObsRecords records are rejected the
+///                   same way, before parsing.
+/// @param state6     ECI state guess at epoch_jd (6 doubles).
+/// @param epoch_jd   Estimation epoch as Julian Date [days].
+/// @param config10   Config array (10 doubles; defaults when shorter).
+/// @param apriori42  Optional a-priori {x0(6), cov(36)} (42 doubles);
+///                   null/empty disables the constraint.
+/// @return Flat result array per the layout above, or null if an input
+///         array has the wrong length (state6 != 6).
+val od_batch_solve_js(val obs_flat, val state6, double epoch_jd,
+                      val config10, val apriori42) {
+    if (state6["length"].as<int>() != 6) {
+        return val::null();
+    }
+
+    const int obs_len = obs_flat["length"].as<int>();
+    std::vector<double> obs_buf(static_cast<std::size_t>(obs_len));
+    for (int i = 0; i < obs_len; ++i) {
+        obs_buf[static_cast<std::size_t>(i)] = obs_flat[i].as<double>();
+    }
+
+    // Record-count cap (defense-in-depth): walk record HEADERS only,
+    // before the full parse. Malformed tails fall through to
+    // parse_obs_flat's own rejection below.
+    int n_records = 0;
+    for (int i = 0; i < obs_len;) {
+        if (obs_len - i < 9) break;
+        const int ndim =
+            static_cast<int>(obs_buf[static_cast<std::size_t>(i + 8)]);
+        if (ndim != 1 && ndim != 2) break;  // malformed; full parse rejects
+        i += 9 + 2 * ndim;
+        if (++n_records > kMaxObsRecords) {
+            return od_batch_error_header(orbit::BatchError::ERROR_INPUT);
+        }
+    }
+
+    const orbit::BatchObsTable table =
+        orbit::parse_obs_flat(obs_buf.data(), obs_buf.size());
+    if (!table.ok) {
+        // Malformed table: report as input error with an empty result
+        // (header only: status at index 54, n_residual_rows = 0 at 55).
+        return od_batch_error_header(orbit::BatchError::ERROR_INPUT);
+    }
+
+    double guess[6];
+    for (int i = 0; i < 6; ++i) {
+        guess[i] = state6[i].as<double>();
+    }
+
+    orbit::BatchConfig config;
+    const int cfg_len = config10["length"].as<int>();
+    if (cfg_len > 0) {
+        double cfg_buf[10] = {0.0};
+        for (int i = 0; i < cfg_len && i < 10; ++i) {
+            cfg_buf[i] = config10[i].as<double>();
+        }
+        orbit::parse_config_flat(cfg_buf,
+                                 static_cast<std::size_t>(std::min(cfg_len, 10)),
+                                 config);
+    }
+
+    orbit::APrioriState apriori;
+    bool has_apriori = false;
+    if (!apriori42.isNull() && !apriori42.isUndefined()) {
+        const int ap_len = apriori42["length"].as<int>();
+        if (ap_len >= 42) {
+            double ap_buf[42];
+            for (int i = 0; i < 42; ++i) {
+                ap_buf[i] = apriori42[i].as<double>();
+            }
+            has_apriori = orbit::parse_apriori_flat(ap_buf, 42, apriori);
+        }
+    }
+
+    const orbit::BatchResult res =
+        orbit::batch_od_solve(table.obs, guess, epoch_jd, config,
+                              has_apriori ? &apriori : nullptr);
+
+    val out = val::array();
+    for (double v : res.state) {
+        out.call<void>("push", v);
+    }
+    for (double v : res.cov) {
+        out.call<void>("push", v);
+    }
+    for (double v : res.formal_sigmas) {
+        out.call<void>("push", v);
+    }
+    out.call<void>("push", static_cast<double>(res.iterations));
+    out.call<void>("push", res.converged ? 1.0 : 0.0);
+    out.call<void>("push", res.wrms);
+    out.call<void>("push", res.reduced_chi2);  // NaN when n_active <= 6.
+    out.call<void>("push", static_cast<double>(res.edited_count));
+    out.call<void>("push", static_cast<double>(res.n_active));
+    out.call<void>("push", static_cast<double>(res.error));
+    out.call<void>("push", static_cast<double>(res.residuals.size()));
+    for (const orbit::BatchResidualRow& rr : res.residuals) {
+        out.call<void>("push", rr.time_jd);
+        out.call<void>("push", static_cast<double>(rr.obs_type));
+        out.call<void>("push", static_cast<double>(rr.ndim));
+        out.call<void>("push", rr.values[0]);
+        out.call<void>("push", rr.values[1]);
+        out.call<void>("push", rr.predicted[0]);
+        out.call<void>("push", rr.predicted[1]);
+        out.call<void>("push", rr.residual[0]);
+        out.call<void>("push", rr.residual[1]);
+        out.call<void>("push", rr.sigma[0]);
+        out.call<void>("push", rr.sigma[1]);
+        out.call<void>("push", rr.normalized[0]);
+        out.call<void>("push", rr.normalized[1]);
+        out.call<void>("push", rr.edited ? 1.0 : 0.0);
+    }
+    return out;
+}
+
+// =============================================================================
 // Embind Registration
 // =============================================================================
 
@@ -729,4 +928,6 @@ EMSCRIPTEN_BINDINGS(zenith) {
     function("od_station_elevation", &od_station_elevation_js);
     function("od_herrick_gibbs", &od_herrick_gibbs_js);
     function("od_gauss_iod", &od_gauss_iod_js);
+    function("od_batch_config_defaults", &od_batch_config_defaults_js);
+    function("od_batch_solve", &od_batch_solve_js);
 }

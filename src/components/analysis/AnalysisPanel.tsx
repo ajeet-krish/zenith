@@ -8,6 +8,7 @@ import { PassPredictorPanel } from './PassPredictorPanel';
 import { MonteCarloPanel } from './MonteCarloPanel';
 import { CoveragePanel } from './CoveragePanel';
 import { IodPanel } from './IodPanel';
+import { BatchPanel } from './BatchPanel';
 import type { AnalysisTool } from '@/orbit/types';
 
 interface ToolSection {
@@ -26,6 +27,7 @@ const TOOLS: ToolSection[] = [
   { id: 'montecarlo', label: 'MONTE CARLO', component: <MonteCarloPanel /> },
   { id: 'coverage', label: 'WALKER CONSTELLATION', component: <CoveragePanel /> },
   { id: 'gaussiod', label: 'GAUSS IOD', component: <IodPanel /> },
+  { id: 'batchod', label: 'BATCH OD', component: <BatchPanel /> },
 ];
 
 /**

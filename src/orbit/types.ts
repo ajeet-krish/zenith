@@ -11,7 +11,7 @@ export interface SampleTLE {
   category: 'LEO' | 'MEO' | 'GEO' | 'HEO' | 'DEBRIS'
 }
 
-export type AnalysisTool = 'maneuver' | 'lambert' | 'conjunction' | 'groundtrack' | 'passpredict' | 'montecarlo' | 'coverage' | 'eclipse' | 'gaussiod'
+export type AnalysisTool = 'maneuver' | 'lambert' | 'conjunction' | 'groundtrack' | 'passpredict' | 'montecarlo' | 'coverage' | 'eclipse' | 'gaussiod' | 'batchod'
 
 // =============================================================================
 // SGP4 Input (used by TLE parser)
@@ -253,4 +253,118 @@ export interface HerrickGibbsTsResult {
   status: number
   /** Human-readable status message. */
   statusMessage: string
+}
+
+// =============================================================================
+// Batch Least-Squares OD (Phase 3) Types
+// =============================================================================
+
+/** BatchError status codes (matches C++ orbit::BatchError). */
+export const BATCH_STATUS = {
+  OK: 0,
+  ERROR_INPUT: 1,
+  ERROR_NOT_CONVERGED: 2,
+  ERROR_SINGULAR_N: 3,
+  ERROR_INTEGRATION: 4,
+  ERROR_A_PRIORI_INVALID: 5,
+} as const
+
+/** Narrowed union of the batch OD status codes. */
+export type BatchStatus = (typeof BATCH_STATUS)[keyof typeof BATCH_STATUS]
+
+/** Human-readable message for each batch OD status code. */
+export const BATCH_STATUS_MESSAGES: Record<number, string> = {
+  [BATCH_STATUS.OK]: 'Batch least-squares solve converged',
+  [BATCH_STATUS.ERROR_INPUT]:
+    'Bad input: empty observations, AZ_EL rows, non-positive sigmas, or invalid state guess',
+  [BATCH_STATUS.ERROR_NOT_CONVERGED]:
+    'Solver finished without meeting the convergence tolerances',
+  [BATCH_STATUS.ERROR_SINGULAR_N]:
+    'Final covariance is singular (rank-deficient active set)',
+  [BATCH_STATUS.ERROR_INTEGRATION]:
+    'Variational propagation failed during the solve',
+  [BATCH_STATUS.ERROR_A_PRIORI_INVALID]:
+    'A-priori covariance is not symmetric positive definite',
+}
+
+/** Batch solver configuration (matches C++ orbit::BatchConfig). */
+export interface BatchTsConfig {
+  /** Gravitational parameter [km^3/s^2]; informational (kernel uses compiled Earth mu). */
+  mu: number
+  /** Force model tier: 0 = two-body, 1 = J2. */
+  forceTier: number
+  /** Max Gauss-Newton iterations per (re)start. */
+  maxIter: number
+  /** Position norm convergence tolerance [km]. */
+  tolPosKm: number
+  /** Velocity norm convergence tolerance [km/s]. */
+  tolVelKms: number
+  /** Relative WRMS-change convergence tolerance. */
+  tolWrmsRel: number
+  /** Residual editing threshold [sigmas]. */
+  sigmaEdit: number
+  /** Max removable fraction of active rows per editing round. */
+  editMaxFraction: number
+  /** Max warm-restart editing rounds. */
+  editMaxRounds: number
+  /** false disables the 3-sigma editing loop entirely. */
+  enableEditing: boolean
+}
+
+/** Optional Bayesian a-priori constraint on the estimated epoch state. */
+export interface BatchAPriori {
+  /** A-priori state at the estimation epoch [km, km/s] (exactly 6 values). */
+  x0: number[]
+  /** A-priori covariance (6x6 row-major, 36 values; must be symmetric positive definite). */
+  cov: number[]
+}
+
+/** One post-fit residual row (matches C++ orbit::BatchResidualRow). */
+export interface BatchResidualRow {
+  /** Observation epoch of the source observation [Julian Date, days]. */
+  timeJd: number
+  /** Source observation type ('range', 'range_rate', or 'ra_dec'). */
+  obsType: ODObservationType
+  /** Reserved: station index; not populated by the Phase 3 kernel. */
+  stationIndex?: number
+  /** Measured value(s) [km, km/s, or rad]; length matches the type's ndim. */
+  value: number[]
+  /** Predicted value(s) at the final state. */
+  predicted: number[]
+  /** Measured minus predicted (RA wrapped to [-pi, pi)). */
+  residual: number[]
+  /** One-sigma measurement uncertainties. */
+  sigma: number[]
+  /** Normalized residuals (residual / sigma). */
+  normalized: number[]
+  /** True when edited out of the solution (values kept for reporting). */
+  edited: boolean
+}
+
+/** Typed result of a batch least-squares OD solve (6D mode). */
+export interface BatchTsResult {
+  /** Estimated ECI state at the solve epoch [km, km/s] (6 values). */
+  state: number[]
+  /** Formal covariance inv(N) at the converged active set (6x6 row-major, 36 values). */
+  covariance: number[]
+  /** sqrt(diag(covariance)) [km, km/s] (6 values). */
+  formalSigmas: number[]
+  /** Total Gauss-Newton iterations across all rounds. */
+  iterations: number
+  /** True when the iteration loop met the convergence tolerances. */
+  converged: boolean
+  /** Post-fit weighted RMS over the active rows. */
+  wrms: number
+  /** chi2 / (m_active - 6); null when m_active <= 6 (kernel reports NaN). */
+  reducedChi2: number | null
+  /** Scalar rows edited out of the solution (n_rows - n_active). */
+  editedCount: number
+  /** Active scalar rows at the final solution. */
+  nActive: number
+  /** BatchError status code (see BATCH_STATUS). */
+  errorStatus: number
+  /** Human-readable status message. */
+  statusMessage: string
+  /** Full residual table, one entry per original scalar row. */
+  residuals: BatchResidualRow[]
 }

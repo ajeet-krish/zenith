@@ -1,7 +1,11 @@
 import { create } from 'zustand';
 import { createStation, destroyStation } from '@/orbit/stations';
 import { runGaussIod } from '@/orbit/iodGauss';
+import { runBatchSolve } from '@/orbit/odBatch';
 import type {
+  BatchAPriori,
+  BatchTsConfig,
+  BatchTsResult,
   GaussIodConfig,
   GaussIodObservation,
   GaussIodTsResult,
@@ -36,6 +40,10 @@ interface ODState {
   // Gauss IOD
   iodResult: GaussIodTsResult | null;
 
+  // Batch LSQ OD (Phase 3)
+  batchResult: BatchTsResult | null;
+  batchIsRunning: boolean;
+
   // Actions
   addStation: (name: string, latRad: number, lonRad: number, altKm: number) => void;
   removeStation: (id: string) => void;
@@ -46,6 +54,13 @@ interface ODState {
   clearObservations: () => void;
   runIod: (observations: GaussIodObservation[], config?: Partial<GaussIodConfig>) => void;
   clearIodResult: () => void;
+  runBatch: (
+    stateGuess: number[],
+    epochJd: number,
+    config?: Partial<BatchTsConfig>,
+    apriori?: BatchAPriori | null
+  ) => void;
+  clearBatchResult: () => void;
   clearAll: () => void;
 }
 
@@ -70,6 +85,8 @@ export const useODStore = create<ODState>((set, get) => ({
   observations: [],
   simConfig: { ...DEFAULT_SIM_CONFIG },
   iodResult: null,
+  batchResult: null,
+  batchIsRunning: false,
 
   // Actions
   addStation: (name, latRad, lonRad, altKm) => {
@@ -137,6 +154,30 @@ export const useODStore = create<ODState>((set, get) => ({
     set({ iodResult: null });
   },
 
+  runBatch: (stateGuess, epochJd, config, apriori) => {
+    set({ batchIsRunning: true });
+    try {
+      // Null result (no WASM, unresolvable station, bad input) clears any
+      // previous solve; solver-level errors come back as a typed result.
+      const result = runBatchSolve({
+        observations: get().observations,
+        stateGuess,
+        epochJd,
+        config,
+        apriori,
+      });
+      set({ batchResult: result });
+    } catch {
+      set({ batchResult: null });
+    } finally {
+      set({ batchIsRunning: false });
+    }
+  },
+
+  clearBatchResult: () => {
+    set({ batchResult: null });
+  },
+
   clearAll: () => {
     const state = get();
     for (const station of state.stations) {
@@ -150,6 +191,8 @@ export const useODStore = create<ODState>((set, get) => ({
       observations: [],
       simConfig: { ...DEFAULT_SIM_CONFIG },
       iodResult: null,
+      batchResult: null,
+      batchIsRunning: false,
     });
   },
 }));

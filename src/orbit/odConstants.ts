@@ -5,7 +5,7 @@
 // wasm/src/zenith/stations.hpp) and helio_ob so golden-master fixtures agree.
 
 import { DEG_TO_RAD, MU_EARTH, RAD_TO_DEG } from './constants'
-import type { GaussIodConfig, ObsConfig } from './types'
+import type { BatchTsConfig, GaussIodConfig, ObsConfig } from './types'
 
 // =============================================================================
 // Estimator Default Measurement Sigmas
@@ -43,6 +43,24 @@ export const DEFAULT_GAUSS_IOD_CONFIG: GaussIodConfig = {
   enableCorrection: true,
   condSingular: 1.0e12,
   condWarning: 1.0e8,
+}
+
+// =============================================================================
+// Batch LSQ OD Defaults (Phase 3)
+// =============================================================================
+
+/** Default batch least-squares configuration (matches C++ orbit::BatchConfig). */
+export const DEFAULT_BATCH_CONFIG: BatchTsConfig = {
+  mu: MU_EARTH,
+  forceTier: 1,
+  maxIter: 10,
+  tolPosKm: 1.0e-6,
+  tolVelKms: 1.0e-9,
+  tolWrmsRel: 1.0e-3,
+  sigmaEdit: 3.0,
+  editMaxFraction: 0.1,
+  editMaxRounds: 3,
+  enableEditing: true,
 }
 
 // =============================================================================

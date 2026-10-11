@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "helio_git_rev": "bdc9ba76a671e30a4544fa9674981f1fecad58a8",
-  "generated_utc": "2026-10-11T19:47:12Z",
+  "generated_utc": "2026-10-11T21:46:17Z",
   "cases": [
     {
       "case_id": "kepler_solver",
@@ -80,6 +80,42 @@
       "file": "herrick_gibbs.json",
       "module": "iod_gauss",
       "function": "herrick_gibbs"
+    },
+    {
+      "case_id": "batch_noise_free",
+      "file": "batch_noise_free.json",
+      "module": "od_batch",
+      "function": "batch_od"
+    },
+    {
+      "case_id": "batch_noisy_seed42",
+      "file": "batch_noisy_seed42.json",
+      "module": "od_batch",
+      "function": "batch_od"
+    },
+    {
+      "case_id": "batch_outlier_editing",
+      "file": "batch_outlier_editing.json",
+      "module": "od_batch",
+      "function": "batch_od"
+    },
+    {
+      "case_id": "batch_apriori",
+      "file": "batch_apriori.json",
+      "module": "od_batch",
+      "function": "batch_od"
+    },
+    {
+      "case_id": "batch_j2_truth",
+      "file": "batch_j2_truth.json",
+      "module": "od_batch",
+      "function": "batch_od"
+    },
+    {
+      "case_id": "batch_refines_iod",
+      "file": "batch_refines_iod.json",
+      "module": "od_batch",
+      "function": "batch_od"
     }
   ]
 }

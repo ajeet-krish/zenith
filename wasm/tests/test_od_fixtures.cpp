@@ -4,7 +4,7 @@
 // from FIXTURES_DIR (set via target_compile_definitions in CMakeLists.txt)
 // and dispatches each case by case_id to the corresponding zenith function.
 // Expected values are compared element-wise with EXPECT_NEAR at the fixture
-// tolerance. Future-phase case ids (batch*, ekf*) are skipped.
+// tolerance. Future-phase case ids (ekf*) are skipped.
 
 #include <gtest/gtest.h>
 
@@ -23,6 +23,7 @@
 #include "zenith/kepler.hpp"
 #include "zenith/matrix_ops.hpp"
 #include "zenith/observations.hpp"
+#include "zenith/od_batch.hpp"
 #include "zenith/partials.hpp"
 #include "zenith/stations.hpp"
 #include "zenith/time_system.hpp"
@@ -64,9 +65,9 @@ json load_case(const std::string& case_id) {
     return json{};
 }
 
-/// Future-phase ids (batch/EKF) are tolerated but not dispatched yet.
+/// Future-phase ids (EKF) are tolerated but not dispatched yet.
 bool is_future_case(const std::string& case_id) {
-    return case_id.rfind("batch", 0) == 0 || case_id.rfind("ekf", 0) == 0;
+    return case_id.rfind("ekf", 0) == 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -114,7 +115,10 @@ TEST(ODFixtures, ManifestListsPhaseOneCases) {
         // Phase 2 (Gauss IOD + Herrick-Gibbs).
         "gauss_iod_leo_3sta_clean", "gauss_iod_leo_1sta_clean",
         "gauss_iod_meo_ecc_clean",  "gauss_iod_geo_1sta_clean",
-        "gauss_iod_leo_noisy_seed42", "herrick_gibbs"};
+        "gauss_iod_leo_noisy_seed42", "herrick_gibbs",
+        // Phase 3 (batch least-squares OD).
+        "batch_noise_free", "batch_noisy_seed42", "batch_outlier_editing",
+        "batch_apriori", "batch_j2_truth", "batch_refines_iod"};
     for (const auto& id : required) {
         bool found = false;
         for (const auto& entry : cases) {
@@ -424,4 +428,360 @@ TEST(ODFixtures, HerrickGibbs) {
     EXPECT_EQ(static_cast<int>(hg.status), expected.at("status").get<int>());
     expect_near_flat({hg.v[0], hg.v[1], hg.v[2]}, expected.at("v2"), tol,
                      false, "v2");
+}
+
+// ---------------------------------------------------------------------------
+// Phase 3: batch_* dispatch (batch least-squares OD golden masters)
+// ---------------------------------------------------------------------------
+
+namespace {
+
+/// BatchConfig from the fixture config dict (WASM config10 field names).
+orbit::BatchConfig batch_config_from_json(const json& c) {
+    orbit::BatchConfig cfg;
+    cfg.force_tier = c.at("force_tier").get<int>();
+    cfg.max_iter = c.at("max_iter").get<int>();
+    cfg.tol_pos_km = c.at("tol_pos_km").get<double>();
+    cfg.tol_vel_kms = c.at("tol_vel_kms").get<double>();
+    cfg.tol_wrms_rel = c.at("tol_wrms_rel").get<double>();
+    cfg.sigma_edit = c.at("sigma_edit").get<double>();
+    cfg.edit_max_fraction = c.at("edit_max_fraction").get<double>();
+    cfg.edit_max_rounds = c.at("edit_max_rounds").get<int>();
+    cfg.enable_editing = c.at("enable_editing").get<bool>();
+    return cfg;
+}
+
+/// Parse the baked flat observation table (WASM record layout).
+std::vector<orbit::BatchObs> batch_obs_from_json(const json& flat) {
+    const std::vector<double> buf = flat.get<std::vector<double>>();
+    const orbit::BatchObsTable table =
+        orbit::parse_obs_flat(buf.data(), buf.size());
+    EXPECT_TRUE(table.ok) << "fixture obs table malformed";
+    return table.obs;
+}
+
+/// Compare one BatchResult against the baked Helio result.
+///
+/// Tolerance semantics: state positions absolute (state_pos km), state
+/// velocities absolute (state_vel km/s), covariance and formal sigmas
+/// relative (floor 1e-12), wrms relative (floor 1e-8), reduced_chi2
+/// relative in the signal regime and presence-only in the roundoff
+/// regime (|expected| < 1e-6), iterations exact unless the fixture
+/// grants a tolerance, edited_mask exact.
+void check_batch_result(const orbit::BatchResult& res, const json& expected,
+                        const json& tolerances, const std::string& label) {
+    // Status: OK iff converged (all golden cases complete a solve).
+    if (expected.at("converged").get<bool>()) {
+        EXPECT_EQ(res.error, orbit::BatchError::OK) << label << " error";
+    } else {
+        EXPECT_EQ(res.error, orbit::BatchError::ERROR_NOT_CONVERGED)
+            << label << " error";
+    }
+    EXPECT_EQ(res.converged, expected.at("converged").get<bool>())
+        << label << " converged";
+
+    // Iterations: exact, or within the per-fixture tolerance.
+    const int iter_expected = expected.at("iterations").get<int>();
+    const int iter_tol = tolerances.at("iterations").get<int>();
+    EXPECT_NEAR(static_cast<double>(res.iterations),
+                static_cast<double>(iter_expected),
+                static_cast<double>(iter_tol))
+        << label << " iterations";
+
+    // State: [0..2] km atol, [3..5] km/s atol.
+    const auto state = expected.at("state").get<std::vector<double>>();
+    ASSERT_EQ(state.size(), 6u) << label << " state length";
+    for (int i = 0; i < 3; ++i) {
+        EXPECT_NEAR(res.state[static_cast<std::size_t>(i)], state[i],
+                    tolerances.at("state_pos").get<double>())
+            << label << " state[" << i << "]";
+    }
+    for (int i = 3; i < 6; ++i) {
+        EXPECT_NEAR(res.state[static_cast<std::size_t>(i)], state[i],
+                    tolerances.at("state_vel").get<double>())
+            << label << " state[" << i << "]";
+    }
+
+    // Covariance: relative tolerance with an absolute floor (near-zero
+    // cross terms would otherwise demand impossible absolute parity).
+    const auto cov = expected.at("covariance").get<std::vector<double>>();
+    ASSERT_EQ(cov.size(), 36u) << label << " covariance length";
+    const double cov_tol = tolerances.at("covariance").get<double>();
+    for (std::size_t k = 0; k < 36; ++k) {
+        EXPECT_NEAR(res.cov[k], cov[k],
+                    std::max(cov_tol * std::abs(cov[k]), 1e-12))
+            << label << " covariance[" << k << "]";
+    }
+
+    // Formal sigmas: relative tolerance.
+    const auto sigmas =
+        expected.at("formal_sigmas").get<std::vector<double>>();
+    ASSERT_EQ(sigmas.size(), 6u) << label << " sigmas length";
+    const double sig_tol = tolerances.at("formal_sigmas").get<double>();
+    for (std::size_t i = 0; i < 6; ++i) {
+        EXPECT_NEAR(res.formal_sigmas[i], sigmas[i],
+                    std::max(sig_tol * std::abs(sigmas[i]), 1e-15))
+            << label << " formal_sigmas[" << i << "]";
+    }
+
+    // WRMS: relative tolerance with an absolute floor (noise-free arcs
+    // sit at roundoff ~1e-9).
+    const double wrms_expected = expected.at("wrms").get<double>();
+    EXPECT_NEAR(res.wrms, wrms_expected,
+                std::max(tolerances.at("wrms").get<double>() *
+                             std::abs(wrms_expected),
+                         1e-8))
+        << label << " wrms";
+
+    // Reduced chi-squared: null encodes Helio NaN (m_active <= 6).
+    if (expected.at("reduced_chi2").is_null()) {
+        EXPECT_TRUE(std::isnan(res.reduced_chi2))
+            << label << " reduced_chi2 should be NaN";
+    } else {
+        const double rc = expected.at("reduced_chi2").get<double>();
+        if (std::abs(rc) < 1e-6) {
+            // Roundoff-regime value (noise-free arcs): presence and sign
+            // only; the exact magnitude is implementation noise.
+            EXPECT_TRUE(std::isfinite(res.reduced_chi2))
+                << label << " reduced_chi2 finite";
+            EXPECT_GE(res.reduced_chi2, 0.0) << label << " reduced_chi2 >= 0";
+        } else {
+            EXPECT_NEAR(res.reduced_chi2, rc, 1e-2 * std::abs(rc))
+                << label << " reduced_chi2";
+        }
+    }
+
+    // Residual table: length, edited mask (exact), edited count.
+    const auto edited_mask =
+        expected.at("edited_mask").get<std::vector<bool>>();
+    const int n_rows = expected.at("n_rows").get<int>();
+    ASSERT_EQ(res.n_rows, n_rows) << label << " n_rows";
+    ASSERT_EQ(res.residuals.size(), static_cast<std::size_t>(n_rows))
+        << label << " residual table length";
+    for (int i = 0; i < n_rows; ++i) {
+        EXPECT_EQ(res.residuals[static_cast<std::size_t>(i)].edited,
+                  edited_mask[static_cast<std::size_t>(i)])
+            << label << " edited_mask[" << i << "]";
+    }
+    EXPECT_EQ(res.edited_count, expected.at("edited_count").get<int>())
+        << label << " edited_count";
+}
+
+/// Position/velocity error norms of a result state against the baked
+/// truth state.
+std::pair<double, double> state_errors(const orbit::BatchResult& res,
+                                       const std::vector<double>& truth) {
+    double pos = 0.0;
+    double vel = 0.0;
+    for (int i = 0; i < 3; ++i) {
+        const double dp =
+            res.state[static_cast<std::size_t>(i)] - truth[static_cast<std::size_t>(i)];
+        const double dv = res.state[static_cast<std::size_t>(3 + i)] -
+                          truth[static_cast<std::size_t>(3 + i)];
+        pos += dp * dp;
+        vel += dv * dv;
+    }
+    return {std::sqrt(pos), std::sqrt(vel)};
+}
+
+/// Run one single-result batch fixture case (B1, B2, B3, B5) and check
+/// golden parity plus the baked physics bounds from meta.
+void run_batch_case(const std::string& case_id) {
+    const json c = load_case(case_id);
+    const json& inputs = c.at("inputs");
+    const double epoch_jd = inputs.at("epoch_jd").get<double>();
+    const std::vector<orbit::BatchObs> obs =
+        batch_obs_from_json(inputs.at("observations"));
+    const auto guess = inputs.at("state_guess").get<std::vector<double>>();
+    ASSERT_EQ(guess.size(), 6u);
+    const orbit::BatchConfig config = batch_config_from_json(c.at("config"));
+
+    const orbit::BatchResult res =
+        orbit::batch_od_solve(obs, guess.data(), epoch_jd, config);
+    check_batch_result(res, c.at("expected"), c.at("tolerances"), case_id);
+
+    // Physics bounds from meta (state vs baked truth).
+    const auto truth = inputs.at("truth_state").get<std::vector<double>>();
+    ASSERT_EQ(truth.size(), 6u);
+    const auto [pos_err, vel_err] = state_errors(res, truth);
+    const json& meta = c.at("meta");
+    if (meta.contains("pos_err_max_km")) {
+        EXPECT_LT(pos_err, meta.at("pos_err_max_km").get<double>())
+            << case_id << " pos_err";
+    }
+    if (meta.contains("vel_err_max_kms")) {
+        EXPECT_LT(vel_err, meta.at("vel_err_max_kms").get<double>())
+            << case_id << " vel_err";
+    }
+    if (meta.contains("wrms_max")) {
+        EXPECT_LT(res.wrms, meta.at("wrms_max").get<double>())
+            << case_id << " wrms_max";
+    }
+    if (meta.contains("iterations_max")) {
+        EXPECT_LE(res.iterations, meta.at("iterations_max").get<int>())
+            << case_id << " iterations_max";
+    }
+    if (meta.contains("wrms_band")) {
+        const double lo = meta.at("wrms_band").at(0).get<double>();
+        const double hi = meta.at("wrms_band").at(1).get<double>();
+        EXPECT_GE(res.wrms, lo) << case_id << " wrms band low";
+        EXPECT_LE(res.wrms, hi) << case_id << " wrms band high";
+    }
+}
+
+}  // namespace
+
+TEST(ODFixtures, BatchNoiseFree) {
+    run_batch_case("batch_noise_free");
+}
+
+TEST(ODFixtures, BatchNoisySeed42) {
+    // Baked rng(42) observation values from the helio export; C++
+    // consumes the baked values directly (numpy RNG not reproduced).
+    run_batch_case("batch_noisy_seed42");
+}
+
+TEST(ODFixtures, BatchOutlierEditing) {
+    run_batch_case("batch_outlier_editing");
+}
+
+TEST(ODFixtures, BatchJ2Truth) {
+    run_batch_case("batch_j2_truth");
+}
+
+TEST(ODFixtures, BatchApriori) {
+    // Sparse noisy angle arc solved with and without a tight a-priori;
+    // both results are golden and the prior must pull the solution
+    // toward x0 and the truth (helio test_batch_a_priori_pull).
+    const json c = load_case("batch_apriori");
+    const json& inputs = c.at("inputs");
+    const double epoch_jd = inputs.at("epoch_jd").get<double>();
+    const std::vector<orbit::BatchObs> obs =
+        batch_obs_from_json(inputs.at("observations"));
+    const auto guess = inputs.at("state_guess").get<std::vector<double>>();
+    const auto truth = inputs.at("truth_state").get<std::vector<double>>();
+    const auto x0 = inputs.at("a_priori").at("x0").get<std::vector<double>>();
+    const auto p0 = inputs.at("a_priori").at("cov").get<std::vector<double>>();
+    ASSERT_EQ(guess.size(), 6u);
+    ASSERT_EQ(truth.size(), 6u);
+    ASSERT_EQ(x0.size(), 6u);
+    ASSERT_EQ(p0.size(), 36u);
+    const orbit::BatchConfig config = batch_config_from_json(c.at("config"));
+
+    orbit::APrioriState apriori;
+    apriori.valid = true;
+    for (std::size_t i = 0; i < 6; ++i) apriori.x0[i] = x0[i];
+    for (std::size_t k = 0; k < 36; ++k) apriori.cov[k] = p0[k];
+
+    const orbit::BatchResult with_prior =
+        orbit::batch_od_solve(obs, guess.data(), epoch_jd, config, &apriori);
+    const orbit::BatchResult without_prior =
+        orbit::batch_od_solve(obs, guess.data(), epoch_jd, config);
+    check_batch_result(with_prior, c.at("expected").at("with_prior"),
+                       c.at("tolerances"), "batch_apriori/with");
+    check_batch_result(without_prior, c.at("expected").at("without_prior"),
+                       c.at("tolerances"), "batch_apriori/without");
+
+    // The pull: with-prior sits closer to x0 and to the truth.
+    double dist_with = 0.0;
+    double dist_without = 0.0;
+    double err_with = 0.0;
+    double err_without = 0.0;
+    for (std::size_t i = 0; i < 6; ++i) {
+        const double dw = with_prior.state[i] - x0[i];
+        const double dow = without_prior.state[i] - x0[i];
+        const double ew = with_prior.state[i] - truth[i];
+        const double eow = without_prior.state[i] - truth[i];
+        dist_with += dw * dw;
+        dist_without += dow * dow;
+        err_with += ew * ew;
+        err_without += eow * eow;
+    }
+    EXPECT_LT(dist_with, dist_without) << "prior pull toward x0";
+    EXPECT_LT(err_with, err_without) << "prior pull toward truth";
+}
+
+TEST(ODFixtures, BatchRefinesIod) {
+    // Noisy angles-only triple seeds gauss_iod (C++ re-solves from the
+    // baked angles); the batch arc refines the seed with clean
+    // radiometric data and must beat the IOD errors (helio
+    // test_batch_refines_gauss_iod).
+    const json c = load_case("batch_refines_iod");
+    const json& inputs = c.at("inputs");
+    const double epoch_jd = inputs.at("epoch_jd").get<double>();
+    const auto truth = inputs.at("truth_state").get<std::vector<double>>();
+    ASSERT_EQ(truth.size(), 6u);
+
+    // --- Gauss IOD seed from the baked noisy angles ---
+    const json& iod = inputs.at("iod");
+    const auto jd3 = iod.at("jd").get<std::vector<double>>();
+    const auto ra3 = iod.at("ra_rad").get<std::vector<double>>();
+    const auto dec3 = iod.at("dec_rad").get<std::vector<double>>();
+    const auto iod_stations =
+        iod.at("stations").get<std::vector<std::string>>();
+    ASSERT_EQ(jd3.size(), 3u);
+    ASSERT_EQ(ra3.size(), 3u);
+    ASSERT_EQ(dec3.size(), 3u);
+    ASSERT_EQ(iod_stations.size(), 3u);
+
+    const orbit::ODGroundStation s0 = station_from_name(iod_stations[0]);
+    const orbit::ODGroundStation s1 = station_from_name(iod_stations[1]);
+    const orbit::ODGroundStation s2 = station_from_name(iod_stations[2]);
+    const orbit::ODGroundStation* sts[3] = {&s0, &s1, &s2};
+    orbit::GaussIodObs iod_obs[3];
+    for (int k = 0; k < 3; ++k) {
+        iod_obs[k].time_jd = jd3[static_cast<std::size_t>(k)];
+        iod_obs[k].ra_rad = ra3[static_cast<std::size_t>(k)];
+        iod_obs[k].dec_rad = dec3[static_cast<std::size_t>(k)];
+        iod_obs[k].station = sts[k];
+    }
+    const orbit::GaussIodResult iod_res = orbit::gauss_iod(iod_obs);
+    ASSERT_EQ(iod_res.status, orbit::GaussIodError::OK);
+
+    // IOD state golden (cross-implementation tolerance looser than the
+    // batch solve: the C++ seed differs at its own fixture tolerance).
+    const auto iod_state_expected =
+        c.at("expected").at("iod_state").get<std::vector<double>>();
+    ASSERT_EQ(iod_state_expected.size(), 6u);
+    std::array<double, 6> iod_state{};
+    for (int i = 0; i < 3; ++i) {
+        iod_state[static_cast<std::size_t>(i)] = iod_res.r[static_cast<std::size_t>(i)];
+        iod_state[static_cast<std::size_t>(3 + i)] =
+            iod_res.v[static_cast<std::size_t>(i)];
+        EXPECT_NEAR(iod_state[static_cast<std::size_t>(i)],
+                    iod_state_expected[static_cast<std::size_t>(i)],
+                    c.at("tolerances").at("iod_state_pos").get<double>())
+            << "iod_state[" << i << "]";
+        EXPECT_NEAR(iod_state[static_cast<std::size_t>(3 + i)],
+                    iod_state_expected[static_cast<std::size_t>(3 + i)],
+                    c.at("tolerances").at("iod_state_vel").get<double>())
+            << "iod_state[" << (3 + i) << "]";
+    }
+
+    // --- Batch refinement seeded from the C++ IOD state ---
+    const std::vector<orbit::BatchObs> obs =
+        batch_obs_from_json(inputs.at("observations"));
+    const orbit::BatchConfig config = batch_config_from_json(c.at("config"));
+    const orbit::BatchResult res = orbit::batch_od_solve(
+        obs, iod_state.data(), epoch_jd, config);
+    check_batch_result(res, c.at("expected").at("batch"),
+                       c.at("tolerances"), "batch_refines_iod/batch");
+
+    // The refinement must beat the IOD seed (physics bounds).
+    const auto [iod_pos_err, iod_vel_err] = [&]() {
+        double pos = 0.0;
+        double vel = 0.0;
+        for (int i = 0; i < 3; ++i) {
+            const double dp = iod_state[static_cast<std::size_t>(i)] -
+                              truth[static_cast<std::size_t>(i)];
+            const double dv = iod_state[static_cast<std::size_t>(3 + i)] -
+                              truth[static_cast<std::size_t>(3 + i)];
+            pos += dp * dp;
+            vel += dv * dv;
+        }
+        return std::pair{std::sqrt(pos), std::sqrt(vel)};
+    }();
+    const auto [batch_pos_err, batch_vel_err] = state_errors(res, truth);
+    EXPECT_LT(batch_pos_err, iod_pos_err) << "batch beats IOD position";
+    EXPECT_LT(batch_vel_err, 0.6 * iod_vel_err) << "batch beats IOD velocity";
 }
