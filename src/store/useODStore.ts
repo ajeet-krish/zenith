@@ -24,12 +24,36 @@ import type {
 // Manages ground stations (owning their WASM handles), simulated
 // observations, and the observation simulator config. Independent from
 // useMissionStore.
+//
+// Observation import (Phase 5): the CSV/JSON parsers live in
+// src/orbit/observationImport.ts. There is deliberately no importObservations
+// action: the importing panel merges station defs itself (reuse an existing
+// station by name, otherwise addStation) and remaps each parsed observation's
+// stationId from the station NAME to the store station id before calling
+// setObservations (replace mode). This keeps WASM handle lifecycle ownership
+// in addStation / removeStation / clearAll.
 
 const DEFAULT_SIM_CONFIG: ObservationSimConfig = {
   noiseScale: 1,
   cadenceSec: 60,
   arcHours: 1,
   stationNames: ['goldstone'],
+};
+
+/** 3D scene layer visibility for OD overlays (Phase 5). Persisted across clearAll. */
+export interface ODSceneToggles {
+  trajectory: boolean;
+  stations: boolean;
+  losRays: boolean;
+  covarianceEllipsoid: boolean;
+}
+
+/** Default OD scene layer visibility. */
+const DEFAULT_SCENE_TOGGLES: ODSceneToggles = {
+  trajectory: true,
+  stations: true,
+  losRays: false,
+  covarianceEllipsoid: true,
 };
 
 interface ODState {
@@ -40,6 +64,9 @@ interface ODState {
   // Observations
   observations: ODObservation[];
   simConfig: ObservationSimConfig;
+
+  // Scene visualization (Phase 5)
+  sceneToggles: ODSceneToggles;
 
   // Gauss IOD
   iodResult: GaussIodTsResult | null;
@@ -61,6 +88,7 @@ interface ODState {
   removeStation: (id: string) => void;
   selectStation: (id: string | null) => void;
   setSimConfig: (partial: Partial<ObservationSimConfig>) => void;
+  setSceneToggle: (key: keyof ODSceneToggles, value: boolean) => void;
   setObservations: (obs: ODObservation[]) => void;
   appendObservations: (obs: ODObservation[]) => void;
   clearObservations: () => void;
@@ -101,6 +129,7 @@ export const useODStore = create<ODState>((set, get) => ({
   selectedStationId: null,
   observations: [],
   simConfig: { ...DEFAULT_SIM_CONFIG },
+  sceneToggles: { ...DEFAULT_SCENE_TOGGLES },
   iodResult: null,
   batchResult: null,
   batchIsRunning: false,
@@ -145,6 +174,12 @@ export const useODStore = create<ODState>((set, get) => ({
   setSimConfig: (partial) => {
     set((state) => ({
       simConfig: { ...state.simConfig, ...partial },
+    }));
+  },
+
+  setSceneToggle: (key, value) => {
+    set((state) => ({
+      sceneToggles: { ...state.sceneToggles, [key]: value },
     }));
   },
 
@@ -255,6 +290,7 @@ export const useODStore = create<ODState>((set, get) => ({
       selectedStationId: null,
       observations: [],
       simConfig: { ...DEFAULT_SIM_CONFIG },
+      // sceneToggles intentionally preserved: UI visibility prefs persist.
       iodResult: null,
       batchResult: null,
       batchIsRunning: false,

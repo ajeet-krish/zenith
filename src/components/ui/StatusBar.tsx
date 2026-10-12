@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { useMissionStore } from '@/store/useMissionStore';
+import { useODStore } from '@/store/useODStore';
 import { sgp4GetElements } from '@/orbit/wasmLoader';
 import { MU_EARTH, R_EARTH } from '@/orbit/constants';
 
@@ -8,6 +9,16 @@ import { MU_EARTH, R_EARTH } from '@/orbit/constants';
  */
 function fmt(n: number, decimals: number): string {
   return n.toFixed(decimals);
+}
+
+/**
+ * Solve-state chip tone: green when usable, red on error, comment gray when
+ * the solve has not run.
+ */
+function solveTone(state: 'ok' | 'error' | 'idle'): string {
+  if (state === 'ok') return 'text-neon-green';
+  if (state === 'error') return 'text-neon-red';
+  return 'text-comment';
 }
 
 /**
@@ -21,6 +32,34 @@ export function StatusBar() {
   const currentEpoch = useMissionStore((s) => s.currentEpoch);
   const wasmReady = useMissionStore((s) => s.wasmReady);
   const propagationMethod = useMissionStore((s) => s.propagationMethod);
+
+  // Orbit determination store (Phase 5 OD segment).
+  const observations = useODStore((s) => s.observations);
+  const stations = useODStore((s) => s.stations);
+  const iodResult = useODStore((s) => s.iodResult);
+  const batchResult = useODStore((s) => s.batchResult);
+  const ekfResult = useODStore((s) => s.ekfResult);
+
+  const obsCount = observations.length;
+  const staCount = stations.length;
+
+  const iodTone = !iodResult ? 'idle' : iodResult.converged ? 'ok' : 'error';
+  const iodLabel = iodTone === 'idle' ? 'idle' : iodTone === 'ok' ? 'OK' : 'ERR';
+  const iodTitle = !iodResult
+    ? 'No Gauss IOD solve yet'
+    : iodResult.statusMessage;
+
+  const batchTone = !batchResult ? 'idle' : batchResult.converged ? 'ok' : 'error';
+  const batchLabel = batchTone === 'idle' ? 'idle' : batchTone === 'ok' ? 'OK' : 'ERR';
+  const batchTitle = !batchResult
+    ? 'No batch least-squares solve yet'
+    : batchResult.statusMessage;
+
+  const ekfTone = !ekfResult ? 'idle' : ekfResult.errorStatus === 0 ? 'ok' : 'error';
+  const ekfLabel = ekfTone === 'idle' ? 'idle' : ekfTone === 'ok' ? 'OK' : 'ERR';
+  const ekfTitle = !ekfResult
+    ? 'No EKF solve yet'
+    : ekfResult.statusMessage;
 
   const totalCount = satellites.length;
   const visibleCount = satellites.filter((s) => s.visible).length;
@@ -89,6 +128,46 @@ export function StatusBar() {
       ) : (
         <span className="text-comment">No satellite selected</span>
       )}
+
+      {/* Orbit determination status (right side) */}
+      <div className="flex items-center gap-3 ml-auto shrink-0">
+        <div className="w-px h-3 bg-white/10" />
+
+        {obsCount > 0 && (
+          <div
+            className="flex items-center gap-1"
+            title={`${obsCount} observations in the OD store`}
+          >
+            <span className="text-comment">OBS</span>
+            <span className="text-white">{obsCount}</span>
+          </div>
+        )}
+
+        {staCount > 0 && (
+          <div
+            className="flex items-center gap-1"
+            title={`${staCount} ground stations in the OD store`}
+          >
+            <span className="text-comment">STA</span>
+            <span className="text-white">{staCount}</span>
+          </div>
+        )}
+
+        <div className="flex items-center gap-1" title={iodTitle}>
+          <span className="text-comment">IOD</span>
+          <span className={solveTone(iodTone)}>{iodLabel}</span>
+        </div>
+
+        <div className="flex items-center gap-1" title={batchTitle}>
+          <span className="text-comment">BATCH</span>
+          <span className={solveTone(batchTone)}>{batchLabel}</span>
+        </div>
+
+        <div className="flex items-center gap-1" title={ekfTitle}>
+          <span className="text-comment">EKF</span>
+          <span className={solveTone(ekfTone)}>{ekfLabel}</span>
+        </div>
+      </div>
     </div>
   );
 }

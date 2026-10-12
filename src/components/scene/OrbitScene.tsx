@@ -8,6 +8,10 @@ import { CameraController } from './CameraController';
 import { GroundTrackLine } from './GroundTrackLine';
 import { TransferOrbitPath } from './TransferOrbitPath';
 import { ConjunctionMarker } from './ConjunctionMarker';
+import { OdTrajectoryOverlay } from './OdTrajectoryOverlay';
+import { CovarianceEllipsoid } from './CovarianceEllipsoid';
+import { GroundStationMarkers } from './GroundStationMarkers';
+import { ObservationLosRays } from './ObservationLosRays';
 import { useMissionStore } from '@/store/useMissionStore';
 import { useOrbitTrails } from '@/hooks/useOrbitTrails';
 
@@ -97,6 +101,12 @@ export function OrbitScene() {
         <GroundTrackLine />
         <TransferOrbitPath />
         <ConjunctionMarker />
+
+        {/* Orbit determination overlays (self-contained store subscriptions) */}
+        <OdTrajectoryOverlay />
+        <CovarianceEllipsoid />
+        <GroundStationMarkers />
+        <ObservationLosRays />
 
         {/* Camera controls */}
         <CameraController />

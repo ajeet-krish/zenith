@@ -7,6 +7,7 @@ import { EclipsePanel } from './EclipsePanel';
 import { PassPredictorPanel } from './PassPredictorPanel';
 import { MonteCarloPanel } from './MonteCarloPanel';
 import { CoveragePanel } from './CoveragePanel';
+import { ObservationPanel } from './ObservationPanel';
 import { IodPanel } from './IodPanel';
 import { BatchPanel } from './BatchPanel';
 import { EkfPanel } from './EkfPanel';
@@ -27,6 +28,7 @@ const TOOLS: ToolSection[] = [
   { id: 'passpredict', label: 'PASS PREDICTOR', component: <PassPredictorPanel /> },
   { id: 'montecarlo', label: 'MONTE CARLO', component: <MonteCarloPanel /> },
   { id: 'coverage', label: 'WALKER CONSTELLATION', component: <CoveragePanel /> },
+  { id: 'observations', label: 'OBSERVATIONS', component: <ObservationPanel /> },
   { id: 'gaussiod', label: 'GAUSS IOD', component: <IodPanel /> },
   { id: 'batchod', label: 'BATCH OD', component: <BatchPanel /> },
   { id: 'ekfod', label: 'EKF OD', component: <EkfPanel /> },

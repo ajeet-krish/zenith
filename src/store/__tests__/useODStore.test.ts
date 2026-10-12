@@ -99,6 +99,7 @@ beforeEach(() => {
     selectedStationId: null,
     observations: [],
     simConfig: { noiseScale: 1, cadenceSec: 60, arcHours: 1, stationNames: ['goldstone'] },
+    sceneToggles: { trajectory: true, stations: true, losRays: false, covarianceEllipsoid: true },
     iodResult: null,
     batchResult: null,
     batchIsRunning: false,
@@ -141,6 +142,44 @@ describe('Initial State', () => {
 
   it('batchIsRunning is false', () => {
     expect(useODStore.getState().batchIsRunning).toBe(false)
+  })
+
+  it('sceneToggles has Phase 5 defaults', () => {
+    expect(useODStore.getState().sceneToggles).toEqual({
+      trajectory: true,
+      stations: true,
+      losRays: false,
+      covarianceEllipsoid: true,
+    })
+  })
+})
+
+// =============================================================================
+// setSceneToggle
+// =============================================================================
+
+describe('setSceneToggle', () => {
+  it('updates only the requested key', () => {
+    useODStore.getState().setSceneToggle('losRays', true)
+    expect(useODStore.getState().sceneToggles).toEqual({
+      trajectory: true,
+      stations: true,
+      losRays: true,
+      covarianceEllipsoid: true,
+    })
+    useODStore.getState().setSceneToggle('covarianceEllipsoid', false)
+    expect(useODStore.getState().sceneToggles).toEqual({
+      trajectory: true,
+      stations: true,
+      losRays: true,
+      covarianceEllipsoid: false,
+    })
+  })
+
+  it('is idempotent for repeated values', () => {
+    useODStore.getState().setSceneToggle('trajectory', false)
+    useODStore.getState().setSceneToggle('trajectory', false)
+    expect(useODStore.getState().sceneToggles.trajectory).toBe(false)
   })
 })
 
@@ -497,5 +536,17 @@ describe('clearAll', () => {
     useODStore.getState().clearAll()
     expect(useODStore.getState().batchResult).toBeNull()
     expect(useODStore.getState().batchIsRunning).toBe(false)
+  })
+
+  it('preserves sceneToggles (UI preferences persist)', () => {
+    useODStore.getState().setSceneToggle('trajectory', false)
+    useODStore.getState().setSceneToggle('covarianceEllipsoid', false)
+    useODStore.getState().clearAll()
+    expect(useODStore.getState().sceneToggles).toEqual({
+      trajectory: false,
+      stations: true,
+      losRays: false,
+      covarianceEllipsoid: false,
+    })
   })
 })
