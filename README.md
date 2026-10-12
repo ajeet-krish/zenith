@@ -164,12 +164,35 @@ Design satellite constellations using the Walker Delta pattern (i:T/P/F). Config
 
 ### Orbit Determination
 
-Zenith includes a complete angles-only orbit determination pipeline, ported from the Helio (helio_ob) Python reference toolkit and validated against golden-master fixtures. Four panels at the bottom of the right sidebar analysis stack form the workflow:
+Zenith includes a complete angles-only orbit determination pipeline, ported from the Helio (helio_ob) Python reference toolkit and validated against 27 golden-master fixtures exported from that reference. Four panels at the bottom of the right sidebar analysis stack take you from raw tracking observations to a filtered trajectory rendered on the 3D Earth.
 
-1. **Observations**: define ground stations (quick-add Goldstone, Arecibo, and Tromsoe, or add custom lat/lon/altitude entries) and import observations from CSV/JSON. Scene toggles in this panel overlay the OD trajectory, 3-sigma covariance ellipsoid, ground station markers, and station-to-satellite LOS rays on the 3D Earth.
-2. **Gauss IOD**: initial orbit determination from three RA/Dec angle pairs (multiple epochs from one station or several stations) via the classical Gauss method with Herrick-Gibbs velocity estimation. Reports ranges, recovered state, and geometry conditioning with warnings for ill-conditioned arcs. A "Simulate From Truth" helper fills RA/Dec rows from the selected satellite for demos.
-3. **Batch OD**: iterative Gauss-Newton least squares with optional Bayesian a-priori constraints, 3-sigma residual editing with warm restarts, and formal covariance. Generate a seeded simulated tracking arc (arc length, cadence, angular noise) or seed the initial guess from the Gauss IOD solution. Results include post-fit residuals, per-component formal sigmas, and a normalized residual plot.
-4. **EKF OD**: sequential extended Kalman filter with per-observation NIS innovation gating, maneuver detection via a 9D augmented state (estimate an unmodeled velocity change), scheduled burn support, and divergence recovery with covariance inflation. Also includes the simulated arc generator. Plots NIS against the gate, formal sigmas over time, and residuals.
+**Initial Orbit Determination**. Recover an orbit from three RA/Dec angle pairs via the classical Gauss method with Herrick-Gibbs velocity estimation. Observations can come from one station at three epochs or up to three stations at one epoch. The result reports slant ranges, the recovered state, and geometry conditioning, with warnings for ill-conditioned arcs. A "Simulate From Truth" helper fills the RA/Dec rows from the selected satellite for demos.
+
+**Batch Least Squares**. Refine an initial state with iterative Gauss-Newton least squares over range, range-rate, and RA/Dec observables. The solver supports Bayesian a-priori constraints and 3-sigma residual editing with warm restarts, and reports post-fit residuals, per-component formal sigmas, and a normalized residual plot. Seed the initial guess from the Gauss IOD solution or generate a seeded simulated tracking arc (arc length, cadence, angular noise) directly in the panel.
+
+**Sequential EKF**. Track a satellite continuously with an extended Kalman filter that updates once per observation. Per-observation NIS innovation gating rejects outliers, a 9D augmented state detects and estimates unmodeled velocity changes, scheduled burns can be injected at known epochs, and divergence recovery inflates a collapsed covariance to re-establish lock. The panel plots NIS against the gate, formal sigmas over time, and residuals, and includes the same simulated arc generator as Batch OD.
+
+**3D Visualization and Import**. The Observations panel manages ground stations (quick-add Goldstone, Arecibo, and Tromsoe, or custom lat/lon/altitude entries) and imports observations from CSV/JSON. Scene toggles overlay the estimated trajectory, 3-sigma covariance ellipsoid, ground station markers, and station-to-satellite LOS rays on the 3D Earth.
+
+![Observations Panel](docs/images/obs_panel.png)
+
+*Observations panel: ground station list with quick-add presets, CSV/JSON observation import, and scene layer toggles for the OD overlays.*
+
+![Gauss IOD Panel](docs/images/iod_panel.png)
+
+*Gauss IOD panel: three RA/Dec rows with station selectors, Solve button, and recovered state with geometry conditioning warnings.*
+
+![Batch OD Panel](docs/images/batch_panel.png)
+
+*Batch OD panel: simulated arc generator, solver configuration, post-fit residual plot, and formal sigma readout.*
+
+![EKF OD Panel](docs/images/ekf_panel.png)
+
+*EKF OD panel: filter configuration, NIS-vs-gate plot, sigma history, and maneuver detection status.*
+
+![OD 3D Visualization](docs/images/od_viz.png)
+
+*3D view with OD overlays: estimated trajectory, 3-sigma covariance ellipsoid, ground station markers, and station LOS rays.*
 
 Observations can be imported as CSV or JSON. The CSV header line is:
 

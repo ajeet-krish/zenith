@@ -3,6 +3,7 @@ dist/
 docs/*
 !docs/images/
 !docs/videos/
+!docs/architecture.md
 docs/videos/*
 !docs/videos/demo.mp4
 coverage/
