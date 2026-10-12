@@ -48,6 +48,7 @@ add_executable(ZenithTests
     test_observations.cpp
     test_iod_gauss.cpp
     test_od_batch.cpp
+    test_od_ekf.cpp
     test_od_fixtures.cpp
 )
 

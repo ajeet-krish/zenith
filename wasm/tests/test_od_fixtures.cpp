@@ -4,7 +4,7 @@
 // from FIXTURES_DIR (set via target_compile_definitions in CMakeLists.txt)
 // and dispatches each case by case_id to the corresponding zenith function.
 // Expected values are compared element-wise with EXPECT_NEAR at the fixture
-// tolerance. Future-phase case ids (ekf*) are skipped.
+// tolerance.
 
 #include <gtest/gtest.h>
 
@@ -24,6 +24,7 @@
 #include "zenith/matrix_ops.hpp"
 #include "zenith/observations.hpp"
 #include "zenith/od_batch.hpp"
+#include "zenith/od_ekf.hpp"
 #include "zenith/partials.hpp"
 #include "zenith/stations.hpp"
 #include "zenith/time_system.hpp"
@@ -63,11 +64,6 @@ json load_case(const std::string& case_id) {
     }
     ADD_FAILURE() << "case not found in manifest: " << case_id;
     return json{};
-}
-
-/// Future-phase ids (EKF) are tolerated but not dispatched yet.
-bool is_future_case(const std::string& case_id) {
-    return case_id.rfind("ekf", 0) == 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -118,7 +114,12 @@ TEST(ODFixtures, ManifestListsPhaseOneCases) {
         "gauss_iod_leo_noisy_seed42", "herrick_gibbs",
         // Phase 3 (batch least-squares OD).
         "batch_noise_free", "batch_noisy_seed42", "batch_outlier_editing",
-        "batch_apriori", "batch_j2_truth", "batch_refines_iod"};
+        "batch_apriori", "batch_j2_truth", "batch_refines_iod",
+        // Phase 4 (sequential EKF OD).
+        "ekf_noise_free", "ekf_noisy_seed42", "ekf_observation_gap",
+        "ekf_outlier_gate", "ekf_scheduled_maneuver",
+        "ekf_maneuver_detection", "ekf_maneuver_forced_contraction",
+        "ekf_divergence_recovery"};
     for (const auto& id : required) {
         bool found = false;
         for (const auto& entry : cases) {
@@ -130,7 +131,6 @@ TEST(ODFixtures, ManifestListsPhaseOneCases) {
     // Every manifest file must exist and parse.
     for (const auto& entry : cases) {
         const std::string id = entry.at("case_id").get<std::string>();
-        if (is_future_case(id)) continue;
         const json c = load_case(id);
         EXPECT_EQ(c.at("case_id").get<std::string>(), id);
         EXPECT_EQ(c.at("schema_version").get<int>(), 1);
@@ -784,4 +784,348 @@ TEST(ODFixtures, BatchRefinesIod) {
     const auto [batch_pos_err, batch_vel_err] = state_errors(res, truth);
     EXPECT_LT(batch_pos_err, iod_pos_err) << "batch beats IOD position";
     EXPECT_LT(batch_vel_err, 0.6 * iod_vel_err) << "batch beats IOD velocity";
+}
+
+// ---------------------------------------------------------------------------
+// Phase 4: ekf_* dispatch (sequential EKF OD golden masters)
+// ---------------------------------------------------------------------------
+
+namespace {
+
+/// EKFConfig from the fixture config dict (WASM config16 field names).
+orbit::EKFConfig ekf_config_from_json(const json& c) {
+    orbit::EKFConfig cfg;
+    cfg.process.q_a = c.at("q_a").get<double>();
+    cfg.process.q_a_maneuver = c.at("q_a_maneuver").get<double>();
+    cfg.maneuver.estimate_maneuver = c.at("estimate_maneuver").get<bool>();
+    cfg.maneuver.nis_sigma_threshold =
+        c.at("nis_sigma_threshold").get<double>();
+    cfg.maneuver.consecutive_exceedances =
+        c.at("consecutive_exceedances").get<int>();
+    cfg.maneuver.reentry_window_obs = c.at("reentry_window_obs").get<int>();
+    cfg.maneuver.scheduled_inflate_kms =
+        c.at("scheduled_inflate_kms").get<double>();
+    cfg.recovery.sustained_nis_count =
+        c.at("sustained_nis_count").get<int>();
+    cfg.recovery.inflate_factor = c.at("inflate_factor").get<double>();
+    const auto p0 = c.at("p0_diag").get<std::vector<double>>();
+    EXPECT_EQ(p0.size(), 6u);
+    for (std::size_t i = 0; i < 6 && i < p0.size(); ++i) {
+        cfg.p0_diag[i] = p0[i];
+    }
+    cfg.force_tier = c.at("force_tier").get<int>();
+    return cfg;
+}
+
+/// Scheduled burns from the fixture list (empty / missing = none).
+std::vector<orbit::ScheduledBurn> ekf_burns_from_json(const json& j) {
+    std::vector<orbit::ScheduledBurn> burns;
+    if (j.is_null() || j.is_array() == false) {
+        return burns;
+    }
+    for (const auto& b : j) {
+        orbit::ScheduledBurn burn;
+        burn.epoch_jd = b.at("epoch_jd").get<double>();
+        const auto dv = b.at("dv").get<std::vector<double>>();
+        EXPECT_EQ(dv.size(), 3u);
+        for (std::size_t i = 0; i < 3 && i < dv.size(); ++i) {
+            burn.dv[i] = dv[i];
+        }
+        burns.push_back(burn);
+    }
+    return burns;
+}
+
+/// Position/velocity error norms of an EKF state vs truth.
+std::pair<double, double> ekf_state_errors(const std::array<double, 6>& state,
+                                           const std::vector<double>& truth) {
+    double pos = 0.0;
+    double vel = 0.0;
+    for (int i = 0; i < 3; ++i) {
+        const double dp =
+            state[static_cast<std::size_t>(i)] - truth[static_cast<std::size_t>(i)];
+        const double dv = state[static_cast<std::size_t>(3 + i)] -
+                          truth[static_cast<std::size_t>(3 + i)];
+        pos += dp * dp;
+        vel += dv * dv;
+    }
+    return {std::sqrt(pos), std::sqrt(vel)};
+}
+
+/// Last stored physical state from state_hist (N x 6 row-major).
+std::array<double, 6> ekf_last_state(const orbit::EKFResult& res) {
+    std::array<double, 6> last{};
+    for (int i = 0; i < 6; ++i) {
+        last[static_cast<std::size_t>(i)] =
+            res.state_hist[static_cast<std::size_t>(res.n_obs * 6 - 6 + i)];
+    }
+    return last;
+}
+
+/// Run one ekf_* fixture case on its baked observations and compare the
+/// golden Helio result plus the baked physics bounds from meta.
+void run_ekf_case(const std::string& case_id) {
+    const json c = load_case(case_id);
+    const json& inputs = c.at("inputs");
+    const double epoch_jd = inputs.at("epoch_jd").get<double>();
+    const std::vector<orbit::BatchObs> obs =
+        batch_obs_from_json(inputs.at("observations"));
+    const auto guess = inputs.at("state_guess").get<std::vector<double>>();
+    ASSERT_EQ(guess.size(), 6u);
+    const auto truth_final =
+        inputs.at("truth_state_final").get<std::vector<double>>();
+    ASSERT_EQ(truth_final.size(), 6u);
+    const orbit::EKFConfig config = ekf_config_from_json(c.at("config"));
+    std::vector<orbit::ScheduledBurn> burns;
+    if (inputs.contains("scheduled_burns")) {
+        burns = ekf_burns_from_json(inputs.at("scheduled_burns"));
+    }
+
+    const orbit::EKFResult res =
+        orbit::ekf_solve(obs, guess.data(), epoch_jd, config, burns);
+    ASSERT_EQ(res.error, orbit::EKFError::OK) << case_id << " error";
+
+    const json& expected = c.at("expected");
+    const json& tolerances = c.at("tolerances");
+    const json& meta = c.at("meta");
+
+    // Header counts: exact parity.
+    EXPECT_EQ(res.n_rows, expected.at("n_rows").get<int>())
+        << case_id << " n_rows";
+    EXPECT_EQ(res.n_updated, expected.at("n_updated").get<int>())
+        << case_id << " n_updated";
+    EXPECT_EQ(res.n_gated, expected.at("n_gated").get<int>())
+        << case_id << " n_gated";
+    EXPECT_EQ(res.n_nis_exceed, expected.at("n_nis_exceed").get<int>())
+        << case_id << " n_nis_exceed";
+    EXPECT_EQ(res.n_recoveries, expected.at("n_recoveries").get<int>())
+        << case_id << " n_recoveries";
+    EXPECT_EQ(res.divergence_flag, expected.at("divergence_flag").get<bool>())
+        << case_id << " divergence_flag";
+    EXPECT_EQ(res.augmented_active_final,
+              expected.at("augmented_active_final").get<bool>())
+        << case_id << " augmented_active_final";
+
+    // First detection epoch: exact (discrete event driven by NIS gates).
+    std::size_t detected_at = res.maneuver_flag.size();
+    for (std::size_t i = 0; i < res.maneuver_flag.size(); ++i) {
+        if (res.maneuver_flag[i]) {
+            detected_at = i;
+            break;
+        }
+    }
+    const int detected_epoch =
+        detected_at < res.maneuver_flag.size()
+            ? static_cast<int>(detected_at / 6)
+            : -1;
+    EXPECT_EQ(detected_epoch, expected.at("detected_epoch").get<int>())
+        << case_id << " detected_epoch";
+
+    // Final state: positions absolute km, velocities absolute km/s.
+    const auto final_state = expected.at("final_state").get<std::vector<double>>();
+    ASSERT_EQ(final_state.size(), 6u);
+    for (int i = 0; i < 3; ++i) {
+        EXPECT_NEAR(res.final_state[static_cast<std::size_t>(i)], final_state[i],
+                    tolerances.at("state_pos").get<double>())
+            << case_id << " final_state[" << i << "]";
+    }
+    for (int i = 3; i < 6; ++i) {
+        EXPECT_NEAR(res.final_state[static_cast<std::size_t>(i)], final_state[i],
+                    tolerances.at("state_vel").get<double>())
+            << case_id << " final_state[" << i << "]";
+    }
+
+    // Final covariance diagonal and full matrix: relative tolerance.
+    const auto cov_diag =
+        expected.at("final_cov_diag").get<std::vector<double>>();
+    ASSERT_EQ(cov_diag.size(), 6u);
+    const double diag_tol = tolerances.at("final_cov_diag").get<double>();
+    for (std::size_t i = 0; i < 6; ++i) {
+        EXPECT_NEAR(res.final_cov_diag[i], cov_diag[i],
+                    std::max(diag_tol * std::abs(cov_diag[i]), 1e-15))
+            << case_id << " final_cov_diag[" << i << "]";
+    }
+    const auto cov = expected.at("final_cov").get<std::vector<double>>();
+    ASSERT_EQ(cov.size(), 36u);
+    const double cov_tol = tolerances.at("final_cov").get<double>();
+    for (std::size_t k = 0; k < 36; ++k) {
+        EXPECT_NEAR(res.final_cov[k], cov[k],
+                    std::max(cov_tol * std::abs(cov[k]), 1e-12))
+            << case_id << " final_cov[" << k << "]";
+    }
+
+    // NIS statistics: relative bands (peak statistics are more
+    // sensitive to roundoff than means; bands live in tolerances).
+    EXPECT_NEAR(res.nis_mean, expected.at("nis_mean").get<double>(),
+                std::max(tolerances.at("nis_mean").get<double>() *
+                             std::abs(expected.at("nis_mean").get<double>()),
+                         1e-9))
+        << case_id << " nis_mean";
+    EXPECT_NEAR(res.nis_max, expected.at("nis_max").get<double>(),
+                std::max(tolerances.at("nis_max").get<double>() *
+                             std::abs(expected.at("nis_max").get<double>()),
+                         1e-6))
+        << case_id << " nis_max";
+
+    // Maneuver records: count exact; dv within the documented
+    // detection-mode observability ceiling; stamped epochs tight.
+    const auto records_expected = expected.at("maneuver_records");
+    ASSERT_EQ(res.maneuver_records.size(), records_expected.size())
+        << case_id << " maneuver_records size";
+    for (std::size_t r = 0; r < records_expected.size(); ++r) {
+        EXPECT_NEAR(res.maneuver_records[r].epoch_jd,
+                    records_expected[r].at("epoch_jd").get<double>(),
+                    tolerances.at("epoch_jd").get<double>())
+            << case_id << " record[" << r << "] epoch_jd";
+        const auto dv =
+            records_expected[r].at("dv").get<std::vector<double>>();
+        ASSERT_EQ(dv.size(), 3u);
+        for (std::size_t i = 0; i < 3; ++i) {
+            EXPECT_NEAR(res.maneuver_records[r].dv[i], dv[i],
+                        tolerances.at("dv").get<double>())
+                << case_id << " record[" << r << "].dv[" << i << "]";
+        }
+    }
+
+    // Physics bounds from meta (last stored state vs baked truth).
+    const auto [pos_err, vel_err] = ekf_state_errors(ekf_last_state(res), truth_final);
+    if (meta.contains("pos_err_max_km")) {
+        EXPECT_LT(pos_err, meta.at("pos_err_max_km").get<double>())
+            << case_id << " pos_err";
+    }
+    if (meta.contains("vel_err_max_kms")) {
+        EXPECT_LT(vel_err, meta.at("vel_err_max_kms").get<double>())
+            << case_id << " vel_err";
+    }
+    if (meta.contains("nis_max_gate")) {
+        EXPECT_LT(res.nis_max, meta.at("nis_max_gate").get<double>())
+            << case_id << " nis_max_gate";
+    }
+    if (meta.contains("n_gated_max")) {
+        EXPECT_LE(res.n_gated, meta.at("n_gated_max").get<int>())
+            << case_id << " n_gated_max";
+    }
+    if (meta.contains("n_recoveries_min")) {
+        EXPECT_GE(res.n_recoveries, meta.at("n_recoveries_min").get<int>())
+            << case_id << " n_recoveries_min";
+    }
+    if (meta.contains("three_sigma_containment") &&
+        meta.at("three_sigma_containment").get<bool>()) {
+        // |final - truth| <= 3 formal sigmas from the last sigma_hist
+        // row (per-component containment, helio test_noisy_three_sigma).
+        const auto last = ekf_last_state(res);
+        for (int i = 0; i < 6; ++i) {
+            const double sig =
+                res.sigma_hist[static_cast<std::size_t>(res.n_obs * 6 - 6 + i)];
+            const double err =
+                last[static_cast<std::size_t>(i)] - truth_final[i];
+            EXPECT_LE(std::abs(err), 3.0 * sig)
+                << case_id << " three-sigma component " << i;
+        }
+    }
+    if (meta.contains("gap_min_s")) {
+        double gap = 0.0;
+        for (std::size_t i = 1; i < res.obs_times.size(); ++i) {
+            gap = std::max(gap,
+                           (res.obs_times[i] - res.obs_times[i - 1]) * 86400.0);
+        }
+        EXPECT_GT(gap, meta.at("gap_min_s").get<double>())
+            << case_id << " gap_min_s";
+    }
+    // State history finite through predict-only steps (gap coast).
+    for (double v : res.state_hist) {
+        ASSERT_TRUE(std::isfinite(v)) << case_id << " state_hist finite";
+    }
+    if (meta.contains("corrupted_rows_gated") &&
+        meta.at("corrupted_rows_gated").get<bool>()) {
+        // Map the baked TRUE row index to the padded per-obs slots and
+        // assert the corrupted observation's components were gated.
+        const int row0 = expected.at("corrupted_row0").get<int>();
+        const int ndim = expected.at("corrupted_ndim").get<int>();
+        int true_row = 0;
+        bool checked = false;
+        for (std::size_t k = 0; k < obs.size() && !checked; ++k) {
+            if (true_row == row0) {
+                for (int i = 0; i < ndim; ++i) {
+                    const std::size_t slot = 2 * k + static_cast<std::size_t>(i);
+                    EXPECT_FALSE(res.updated_mask[slot])
+                        << case_id << " corrupted slot " << slot;
+                    EXPECT_GT(res.nis[slot], 25.0)
+                        << case_id << " corrupted nis " << slot;
+                }
+                checked = true;
+            }
+            true_row += obs[k].ndim;
+        }
+        EXPECT_TRUE(checked) << case_id << " corrupted_row0 not found";
+    }
+
+    // Negative control (E5/E7): rerun with the baked control config and
+    // assert the failure trajectory (golden) and error bound.
+    if (inputs.contains("control_config")) {
+        const orbit::EKFConfig control_cfg =
+            ekf_config_from_json(inputs.at("control_config"));
+        const orbit::EKFResult control = orbit::ekf_solve(
+            obs, guess.data(), epoch_jd, control_cfg, {});
+        ASSERT_EQ(control.error, orbit::EKFError::OK)
+            << case_id << " control error";
+        const auto control_state =
+            expected.at("control_final_state").get<std::vector<double>>();
+        ASSERT_EQ(control_state.size(), 6u);
+        for (int i = 0; i < 3; ++i) {
+            EXPECT_NEAR(control.final_state[static_cast<std::size_t>(i)],
+                        control_state[i],
+                        tolerances.at("state_pos").get<double>())
+                << case_id << " control final_state[" << i << "]";
+        }
+        for (int i = 3; i < 6; ++i) {
+            EXPECT_NEAR(control.final_state[static_cast<std::size_t>(i)],
+                        control_state[i],
+                        tolerances.at("state_vel").get<double>())
+                << case_id << " control final_state[" << i << "]";
+        }
+        if (meta.contains("control_pos_err_min_km")) {
+            const auto [ctrl_pos_err, ctrl_vel_err] =
+                ekf_state_errors(ekf_last_state(control), truth_final);
+            (void)ctrl_vel_err;
+            EXPECT_GT(ctrl_pos_err, meta.at("control_pos_err_min_km").get<double>())
+                << case_id << " control_pos_err";
+        }
+    }
+}
+
+}  // namespace
+
+TEST(ODFixtures, EkfNoiseFree) {
+    run_ekf_case("ekf_noise_free");
+}
+
+TEST(ODFixtures, EkfNoisySeed42) {
+    // Baked rng(42) observation values from the helio export; C++
+    // consumes the baked values directly (numpy RNG not reproduced).
+    run_ekf_case("ekf_noisy_seed42");
+}
+
+TEST(ODFixtures, EkfObservationGap) {
+    run_ekf_case("ekf_observation_gap");
+}
+
+TEST(ODFixtures, EkfOutlierGate) {
+    run_ekf_case("ekf_outlier_gate");
+}
+
+TEST(ODFixtures, EkfScheduledManeuver) {
+    run_ekf_case("ekf_scheduled_maneuver");
+}
+
+TEST(ODFixtures, EkfManeuverDetection) {
+    run_ekf_case("ekf_maneuver_detection");
+}
+
+TEST(ODFixtures, EkfManeuverForcedContraction) {
+    run_ekf_case("ekf_maneuver_forced_contraction");
+}
+
+TEST(ODFixtures, EkfDivergenceRecovery) {
+    run_ekf_case("ekf_divergence_recovery");
 }

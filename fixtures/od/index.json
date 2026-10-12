@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "helio_git_rev": "bdc9ba76a671e30a4544fa9674981f1fecad58a8",
-  "generated_utc": "2026-10-11T21:46:17Z",
+  "generated_utc": "2026-10-11T23:52:03Z",
   "cases": [
     {
       "case_id": "kepler_solver",
@@ -116,6 +116,54 @@
       "file": "batch_refines_iod.json",
       "module": "od_batch",
       "function": "batch_od"
+    },
+    {
+      "case_id": "ekf_noise_free",
+      "file": "ekf_noise_free.json",
+      "module": "od_ekf",
+      "function": "ekf_solve"
+    },
+    {
+      "case_id": "ekf_noisy_seed42",
+      "file": "ekf_noisy_seed42.json",
+      "module": "od_ekf",
+      "function": "ekf_solve"
+    },
+    {
+      "case_id": "ekf_observation_gap",
+      "file": "ekf_observation_gap.json",
+      "module": "od_ekf",
+      "function": "ekf_solve"
+    },
+    {
+      "case_id": "ekf_outlier_gate",
+      "file": "ekf_outlier_gate.json",
+      "module": "od_ekf",
+      "function": "ekf_solve"
+    },
+    {
+      "case_id": "ekf_scheduled_maneuver",
+      "file": "ekf_scheduled_maneuver.json",
+      "module": "od_ekf",
+      "function": "ekf_solve"
+    },
+    {
+      "case_id": "ekf_maneuver_detection",
+      "file": "ekf_maneuver_detection.json",
+      "module": "od_ekf",
+      "function": "ekf_solve"
+    },
+    {
+      "case_id": "ekf_maneuver_forced_contraction",
+      "file": "ekf_maneuver_forced_contraction.json",
+      "module": "od_ekf",
+      "function": "ekf_solve"
+    },
+    {
+      "case_id": "ekf_divergence_recovery",
+      "file": "ekf_divergence_recovery.json",
+      "module": "od_ekf",
+      "function": "ekf_solve"
     }
   ]
 }

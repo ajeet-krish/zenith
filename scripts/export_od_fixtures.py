@@ -1082,6 +1082,601 @@ def build_cases() -> list[dict]:
         )
     )
 
+    # ------------------------------------------------------------------
+    # Phase 4: Sequential EKF OD golden-master cases (E1-E7 per the
+    # standards.md research spec). Validation-error paths are unit-
+    # tested natively in wasm/tests/test_od_ekf.cpp instead of fixtures.
+    # Only E2 bakes rng(42) noise; the other cases are noise-free and
+    # regenerate deterministically. Case ids:
+    #   ekf_noise_free (E1), ekf_noisy_seed42 (E2),
+    #   ekf_observation_gap (E3), ekf_outlier_gate (E4),
+    #   ekf_scheduled_maneuver (E5 + negative control),
+    #   ekf_maneuver_detection (E6), ekf_maneuver_forced_contraction
+    #   (E6b), ekf_divergence_recovery (E7 + negative control).
+    # ------------------------------------------------------------------
+    from helio.od_ekf import (
+        EKFConfig as HEKFConfig,
+        ManeuverConfig as HManeuverConfig,
+        ProcessNoiseConfig as HProcessNoiseConfig,
+        RecoveryConfig as HRecoveryConfig,
+        ScheduledManeuver as HScheduledManeuver,
+        ekf_solve as h_ekf_solve,
+    )
+    from helio.time_system import utc_to_jd as h_utc_to_jd_ekf
+
+    EKF_OBS_PER_EPOCH = 6  # 2 stations x 3 types (helio OBS_PER_EPOCH).
+    ekf_epoch_jd = h_utc_to_jd_ekf(2024, 1, 1)
+
+    def _ekf_truth_state(
+        truth_epoch: np.ndarray,
+        dt: float,
+        burn_dt: float | None = None,
+        burn_dv: np.ndarray | None = None,
+    ) -> np.ndarray:
+        """Truth state at dt seconds after the epoch with an optional
+        burn (helio test_ekf._truth_state)."""
+        if burn_dt is None or dt <= burn_dt:
+            r, v, _ = propagate_j2_with_stm(truth_epoch, dt)
+            return np.concatenate([r, v])
+        r_b, v_b, _ = propagate_j2_with_stm(truth_epoch, burn_dt)
+        v_b = v_b + burn_dv
+        r, v, _ = propagate_j2_with_stm(np.concatenate([r_b, v_b]), dt - burn_dt)
+        return np.concatenate([r, v])
+
+    def _ekf_offset_guess(truth: np.ndarray) -> np.ndarray:
+        """Truth plus the deterministic Helio EKF guess offset."""
+        guess = truth.copy()
+        guess[:3] += np.array([0.0005, -0.0004, 0.0003])
+        guess[3:] += np.array([2e-7, -1e-7, 1e-7])
+        return guess
+
+    def _ekf_make_arc(
+        truth_epoch: np.ndarray,
+        times_s: list[float],
+        stations: tuple[str, ...],
+        burn_dt: float | None = None,
+        burn_dv: np.ndarray | None = None,
+        rng: np.random.Generator | None = None,
+    ) -> list[Observation]:
+        """Simulate observations at the given times from every station
+        (helio test_ekf._make_arc; time-major, station-major, type-
+        minor order)."""
+        ekf_cfg_sigma = ObsConfig()
+        ekf_types = (HObsType.RANGE, HObsType.RANGE_RATE, HObsType.RA_DEC)
+        obs: list[Observation] = []
+        for dt in times_s:
+            jd = ekf_epoch_jd + dt / 86400.0
+            state = _ekf_truth_state(truth_epoch, dt, burn_dt, burn_dv)
+            for station_name in stations:
+                station = _HST[station_name]
+                pred = predict_observation(
+                    state[:3], state[3:], station, jd
+                )
+                values_list = [
+                    np.array([pred["range_km"]]),
+                    np.array([pred["range_rate_kms"]]),
+                    np.array([pred["ra_rad"], pred["dec_rad"]]),
+                ]
+                sigma_list = [
+                    np.array([ekf_cfg_sigma.sigma_range_km]),
+                    np.array([ekf_cfg_sigma.sigma_range_rate_kms]),
+                    np.array(ekf_cfg_sigma.sigma_angles_rad),
+                ]
+                for obs_type, values, sigmas in zip(
+                    ekf_types, values_list, sigma_list, strict=True
+                ):
+                    if rng is not None:
+                        values = values + rng.normal(0.0, sigmas)
+                    obs.append(
+                        Observation(
+                            time_jd=jd,
+                            station=station,
+                            obs_type=obs_type,
+                            values=values,
+                            sigmas=sigmas,
+                        )
+                    )
+        return obs
+
+    def _bake_ekf_cfg(cfg: HEKFConfig) -> dict:
+        """Config dict matching the C++ EKFConfig / WASM config16."""
+        force_tier = 0 if cfg.j2 == 0.0 else 1  # None -> J2 tier.
+        return {
+            "q_a": r17(cfg.process.q_a),
+            "q_a_maneuver": r17(cfg.process.q_a_maneuver),
+            "estimate_maneuver": bool(cfg.maneuver.estimate_maneuver),
+            "nis_sigma_threshold": r17(cfg.maneuver.nis_sigma_threshold),
+            "consecutive_exceedances": int(cfg.maneuver.consecutive_exceedances),
+            "reentry_window_obs": int(cfg.maneuver.reentry_window_obs),
+            "scheduled_inflate_kms": r17(cfg.maneuver.scheduled_inflate_kms),
+            "sustained_nis_count": int(cfg.recovery.sustained_nis_count),
+            "inflate_factor": r17(cfg.recovery.inflate_factor),
+            "p0_diag": r17_array(np.asarray(cfg.p0_diag, dtype=np.float64)),
+            "force_tier": force_tier,
+        }
+
+    def _bake_ekf_expected(res) -> dict:
+        """Expected-result dict per the C++ EKFResult comparison."""
+        detected = np.flatnonzero(res.maneuver_detected)
+        detected_epoch = int(detected[0]) // EKF_OBS_PER_EPOCH if detected.size else -1
+        return {
+            "final_state": r17_array(res.state_hist[-1, :6]),
+            "final_cov_diag": r17_array(np.diag(res.final_covariance)),
+            "final_cov": r17_array(res.final_covariance),
+            "nis_mean": r17(float(np.mean(res.nis))),
+            "nis_max": r17(float(np.max(res.nis))),
+            "n_nis_exceed": int(np.sum(res.nis > 25.0)),
+            "n_updated": int(np.sum(res.updated_mask)),
+            "n_gated": int(np.size(res.updated_mask) - np.sum(res.updated_mask)),
+            "n_rows": int(np.size(res.updated_mask)),
+            "n_recoveries": int(res.n_recoveries),
+            "divergence_flag": bool(res.divergence_flag),
+            "augmented_active_final": bool(res.augmented_active_final),
+            "detected_epoch": detected_epoch,
+            "maneuver_records": [
+                {"epoch_jd": r17(rec.epoch_jd), "dv": r17_array(rec.delta_v)}
+                for rec in res.delta_v_estimates
+            ],
+        }
+
+    def _ekf_tols() -> dict:
+        """Cross-implementation tolerances: state atol 1e-8 km / 1e-11
+        km/s (observed C++ vs Helio parity is ~1e-12 km / 1e-14 km/s;
+        3-4 orders of headroom for compiler/library variation);
+        covariance relative; counts exact; NIS stats relative bands;
+        dv records within the documented detection-mode observability
+        ceiling (5e-4 km/s, a physics bound not a parity bound)."""
+        return {
+            "state_pos": 1e-8,
+            "state_vel": 1e-11,
+            "final_cov": 1e-6,
+            "final_cov_diag": 1e-6,
+            "nis_mean": 1e-3,
+            "nis_max": 1e-3,
+            "dv": 5e-4,
+            "epoch_jd": 1e-9,
+        }
+
+    def _ekf_pos_vel_err(state: np.ndarray, truth: np.ndarray) -> tuple[float, float]:
+        pos = float(np.linalg.norm(state[:3] - truth[:3]))
+        vel = float(np.linalg.norm(state[3:] - truth[3:]))
+        return pos, vel
+
+    EKF_ALL_STATIONS = ("goldstone", "tromsoe")
+
+    def _ekf_short_arc_times() -> list[float]:
+        return [(m - 5) * 120.0 for m in range(11)]
+
+    def _ekf_long_arc_times() -> list[float]:
+        return [(m - 10) * 120.0 for m in range(21)]
+
+    def _ekf_leo_truth() -> np.ndarray:
+        return leo_state  # elements_to_state of the shared LEO elements.
+
+    def _ekf_burn_dv() -> tuple[float, np.ndarray]:
+        """1 m/s prograde burn dv = 1e-3 * v_hat at the epoch (helio
+        test_ekf.test_maneuver_detection)."""
+        pre_burn = _ekf_leo_truth()
+        unit_v = pre_burn[3:] / float(np.linalg.norm(pre_burn[3:]))
+        return 60.0, 1e-3 * unit_v
+
+    # E1: noise-free convergence (helio test_noise_free_convergence).
+    e1_truth = _ekf_leo_truth()
+    e1_times = _ekf_short_arc_times()
+    e1_obs = _ekf_make_arc(e1_truth, e1_times, EKF_ALL_STATIONS)
+    e1_guess = _ekf_offset_guess(e1_truth)
+    e1_cfg = HEKFConfig(process=HProcessNoiseConfig(q_a=0.0))
+    e1_res = h_ekf_solve(e1_obs, e1_guess, ekf_epoch_jd, e1_cfg)
+    e1_truth_final = _ekf_truth_state(e1_truth, e1_times[-1])
+    e1_pos_err, e1_vel_err = _ekf_pos_vel_err(e1_res.state_hist[-1, :6], e1_truth_final)
+    assert e1_pos_err < 1e-3 and e1_vel_err < 1e-6
+    assert np.all(e1_res.updated_mask)
+    assert np.all(e1_res.nis < 25.0)
+    assert e1_res.n_recoveries == 0
+    cases.append(
+        make_case(
+            case_id="ekf_noise_free",
+            module="od_ekf",
+            function="ekf_solve",
+            inputs={
+                "epoch_jd": r17(ekf_epoch_jd),
+                "observations": _bake_obs_flat(e1_obs),
+                "state_guess": r17_array(e1_guess),
+                "truth_state_final": r17_array(e1_truth_final),
+            },
+            config=_bake_ekf_cfg(e1_cfg),
+            expected=_bake_ekf_expected(e1_res),
+            tolerances=_ekf_tols(),
+            meta={
+                "source": "helio_ob",
+                "reference": "helio.od_ekf.ekf_solve",
+                "note": "E1: noise-free 11-epoch 2-station 66-row arc, "
+                "q_a=0; all rows updated, all NIS < 25",
+                "pos_err_max_km": 1e-3,
+                "vel_err_max_kms": 1e-6,
+                "nis_max_gate": 25.0,
+                "all_updated": True,
+                "n_gated_max": 0,
+                "n_recoveries_max": 0,
+            },
+        )
+    )
+
+    # E2: noisy 3-sigma (helio test_noisy_three_sigma; noisy_rng =
+    # default_rng(42), noise baked into observation values).
+    e2_truth = e1_truth
+    e2_rng = np.random.default_rng(42)
+    e2_obs = _ekf_make_arc(e2_truth, e1_times, EKF_ALL_STATIONS, rng=e2_rng)
+    e2_guess = _ekf_offset_guess(e2_truth)
+    e2_cfg = HEKFConfig()  # default q_a = 1e-10.
+    e2_res = h_ekf_solve(e2_obs, e2_guess, ekf_epoch_jd, e2_cfg)
+    e2_truth_final = _ekf_truth_state(e2_truth, e1_times[-1])
+    e2_final = e2_res.state_hist[-1, :6]
+    e2_sigmas = e2_res.sigmas[-1, :6]
+    e2_err = e2_final - e2_truth_final
+    e2_pos_err, e2_vel_err = _ekf_pos_vel_err(e2_final, e2_truth_final)
+    assert np.all(np.abs(e2_err) <= 3.0 * e2_sigmas)
+    assert e2_pos_err < 0.01
+    cases.append(
+        make_case(
+            case_id="ekf_noisy_seed42",
+            module="od_ekf",
+            function="ekf_solve",
+            inputs={
+                "epoch_jd": r17(ekf_epoch_jd),
+                "observations": _bake_obs_flat(e2_obs),
+                "state_guess": r17_array(e2_guess),
+                "truth_state_final": r17_array(e2_truth_final),
+                "noise_seed": 42,
+            },
+            config=_bake_ekf_cfg(e2_cfg),
+            expected=_bake_ekf_expected(e2_res),
+            tolerances=_ekf_tols(),
+            meta={
+                "source": "helio_ob",
+                "reference": "helio.od_ekf.ekf_solve",
+                "note": "E2: rng(42) noise baked into observation values; "
+                "numpy RNG not reproduced in C++",
+                "pos_err_max_km": 0.01,
+                "three_sigma_containment": True,
+            },
+        )
+    )
+
+    # E3: observation gap coast (helio test_observation_gap).
+    e3_truth = e1_truth
+    e3_times = [(m - 4) * 120.0 for m in range(5)]
+    e3_times += [720.0 + m * 120.0 for m in range(5)]
+    e3_obs = _ekf_make_arc(e3_truth, e3_times, EKF_ALL_STATIONS)
+    e3_guess = _ekf_offset_guess(e3_truth)
+    e3_cfg = HEKFConfig(process=HProcessNoiseConfig(q_a=0.0))
+    e3_res = h_ekf_solve(e3_obs, e3_guess, ekf_epoch_jd, e3_cfg)
+    e3_truth_final = _ekf_truth_state(e3_truth, e3_times[-1])
+    e3_pos_err, e3_vel_err = _ekf_pos_vel_err(e3_res.state_hist[-1, :6], e3_truth_final)
+    e3_gap_s = float(np.max(np.diff(e3_res.obs_times_jd)) * 86400.0)
+    assert e3_gap_s > 600.0
+    assert e3_pos_err < 1e-3 and e3_vel_err < 1e-6
+    assert bool(np.all(np.isfinite(e3_res.state_hist[:, :6])))
+    cases.append(
+        make_case(
+            case_id="ekf_observation_gap",
+            module="od_ekf",
+            function="ekf_solve",
+            inputs={
+                "epoch_jd": r17(ekf_epoch_jd),
+                "observations": _bake_obs_flat(e3_obs),
+                "state_guess": r17_array(e3_guess),
+                "truth_state_final": r17_array(e3_truth_final),
+            },
+            config=_bake_ekf_cfg(e3_cfg),
+            expected=_bake_ekf_expected(e3_res),
+            tolerances=_ekf_tols(),
+            meta={
+                "source": "helio_ob",
+                "reference": "helio.od_ekf.ekf_solve",
+                "note": "E3: 600 s observation gap; filter coasts and "
+                "recovers (q_a=0)",
+                "pos_err_max_km": 1e-3,
+                "vel_err_max_kms": 1e-6,
+                "gap_min_s": 600.0,
+            },
+        )
+    )
+
+    # E4: 100-sigma outlier gate (helio test_outlier_gate): mid
+    # observation (index 33) corrupted by +100 sigma.
+    e4_truth = e1_truth
+    e4_obs = _ekf_make_arc(e4_truth, e1_times, EKF_ALL_STATIONS)
+    e4_mid = len(e4_obs) // 2
+    e4_bad = e4_obs[e4_mid]
+    e4_obs[e4_mid] = Observation(
+        time_jd=e4_bad.time_jd,
+        station=e4_bad.station,
+        obs_type=e4_bad.obs_type,
+        values=e4_bad.values + 100.0 * e4_bad.sigmas,
+        sigmas=e4_bad.sigmas,
+    )
+    e4_row0 = sum(o.obs_type.ndim for o in e4_obs[:e4_mid])
+    e4_ndim = e4_bad.obs_type.ndim
+    e4_guess = _ekf_offset_guess(e4_truth)
+    e4_cfg = HEKFConfig(process=HProcessNoiseConfig(q_a=0.0))
+    e4_res = h_ekf_solve(e4_obs, e4_guess, ekf_epoch_jd, e4_cfg)
+    e4_truth_final = _ekf_truth_state(e4_truth, e1_times[-1])
+    e4_pos_err, e4_vel_err = _ekf_pos_vel_err(e4_res.state_hist[-1, :6], e4_truth_final)
+    assert not bool(np.any(e4_res.updated_mask[e4_row0 : e4_row0 + e4_ndim]))
+    assert bool(np.all(e4_res.nis[e4_row0 : e4_row0 + e4_ndim] > 25.0))
+    assert e4_pos_err < 1e-3 and e4_vel_err < 1e-6
+    e4_expected = _bake_ekf_expected(e4_res)
+    e4_expected["corrupted_obs_index"] = e4_mid
+    e4_expected["corrupted_row0"] = e4_row0
+    e4_expected["corrupted_ndim"] = e4_ndim
+    cases.append(
+        make_case(
+            case_id="ekf_outlier_gate",
+            module="od_ekf",
+            function="ekf_solve",
+            inputs={
+                "epoch_jd": r17(ekf_epoch_jd),
+                "observations": _bake_obs_flat(e4_obs),
+                "state_guess": r17_array(e4_guess),
+                "truth_state_final": r17_array(e4_truth_final),
+            },
+            config=_bake_ekf_cfg(e4_cfg),
+            expected=e4_expected,
+            tolerances=_ekf_tols(),
+            meta={
+                "source": "helio_ob",
+                "reference": "helio.od_ekf.ekf_solve",
+                "note": "E4: observation index 33 += 100 sigma; gated "
+                "rows recorded but not applied; error matches E1",
+                "pos_err_max_km": 1e-3,
+                "vel_err_max_kms": 1e-6,
+                "corrupted_rows_gated": True,
+            },
+        )
+    )
+
+    # E5: scheduled maneuver + negative control (helio
+    # test_scheduled_maneuver).
+    e5_truth = e1_truth
+    e5_burn_dt = 60.0
+    e5_burn_dv = np.array([1e-4, -2e-4, 3e-4])
+    e5_obs = _ekf_make_arc(
+        e5_truth, e1_times, EKF_ALL_STATIONS, burn_dt=e5_burn_dt,
+        burn_dv=e5_burn_dv,
+    )
+    e5_guess = _ekf_offset_guess(e5_truth)
+    e5_burn = HScheduledManeuver(
+        epoch_jd=ekf_epoch_jd + e5_burn_dt / 86400.0, delta_v=e5_burn_dv
+    )
+    e5_cfg = HEKFConfig(
+        process=HProcessNoiseConfig(q_a=0.0),
+        maneuver=HManeuverConfig(scheduled_maneuvers=(e5_burn,)),
+    )
+    e5_res = h_ekf_solve(e5_obs, e5_guess, ekf_epoch_jd, e5_cfg)
+    e5_truth_final = _ekf_truth_state(
+        e5_truth, e1_times[-1], e5_burn_dt, e5_burn_dv
+    )
+    e5_pos_err, e5_vel_err = _ekf_pos_vel_err(e5_res.state_hist[-1, :6], e5_truth_final)
+    assert e5_pos_err < 1e-3 and e5_vel_err < 1e-6
+    # First post-burn epoch is flagged (index 6 of the 11-epoch arc).
+    e5_first_post = 6 * EKF_OBS_PER_EPOCH
+    assert bool(
+        np.any(e5_res.maneuver_detected[e5_first_post : e5_first_post + EKF_OBS_PER_EPOCH])
+    )
+    # Negative control: no scheduled entry -> burn unmodeled.
+    e5_ctrl_cfg = HEKFConfig(process=HProcessNoiseConfig(q_a=0.0))
+    e5_ctrl_res = h_ekf_solve(e5_obs, e5_guess, ekf_epoch_jd, e5_ctrl_cfg)
+    e5_ctrl_pos_err, _ = _ekf_pos_vel_err(e5_ctrl_res.state_hist[-1, :6], e5_truth_final)
+    assert e5_ctrl_pos_err > 0.05
+    e5_expected = _bake_ekf_expected(e5_res)
+    e5_expected["control_final_state"] = r17_array(e5_ctrl_res.state_hist[-1, :6])
+    cases.append(
+        make_case(
+            case_id="ekf_scheduled_maneuver",
+            module="od_ekf",
+            function="ekf_solve",
+            inputs={
+                "epoch_jd": r17(ekf_epoch_jd),
+                "observations": _bake_obs_flat(e5_obs),
+                "state_guess": r17_array(e5_guess),
+                "truth_state_final": r17_array(e5_truth_final),
+                "scheduled_burns": [
+                    {"epoch_jd": r17(e5_burn.epoch_jd),
+                     "dv": r17_array(e5_burn_dv)}
+                ],
+                "control_config": _bake_ekf_cfg(e5_ctrl_cfg),
+            },
+            config=_bake_ekf_cfg(e5_cfg),
+            expected=e5_expected,
+            tolerances=_ekf_tols(),
+            meta={
+                "source": "helio_ob",
+                "reference": "helio.od_ekf.ekf_solve",
+                "note": "E5: known 0.37 m/s burn applied mid-predict at "
+                "t=60 s; first post-burn epoch flagged; control without "
+                "the scheduled entry fails",
+                "pos_err_max_km": 1e-3,
+                "vel_err_max_kms": 1e-6,
+                "first_post_burn_epoch": 6,
+                "control_pos_err_min_km": 0.05,
+            },
+        )
+    )
+
+    # E6: maneuver detection + dv estimate (helio
+    # test_maneuver_detection).
+    e6_truth = e1_truth
+    e6_times = _ekf_long_arc_times()
+    e6_burn_dt, e6_burn_dv = _ekf_burn_dv()
+    e6_obs = _ekf_make_arc(
+        e6_truth, e6_times, EKF_ALL_STATIONS, burn_dt=e6_burn_dt,
+        burn_dv=e6_burn_dv,
+    )
+    e6_guess = _ekf_offset_guess(e6_truth)
+    e6_cfg = HEKFConfig(
+        process=HProcessNoiseConfig(q_a=0.0, q_a_maneuver=1e-9),
+        maneuver=HManeuverConfig(
+            estimate_maneuver=True,
+            consecutive_exceedances=2,
+            reentry_window_obs=6,
+        ),
+    )
+    e6_res = h_ekf_solve(e6_obs, e6_guess, ekf_epoch_jd, e6_cfg)
+    e6_truth_final = _ekf_truth_state(
+        e6_truth, e6_times[-1], e6_burn_dt, e6_burn_dv
+    )
+    e6_pos_err, e6_vel_err = _ekf_pos_vel_err(e6_res.state_hist[-1, :6], e6_truth_final)
+    e6_detected = np.flatnonzero(e6_res.maneuver_detected)
+    e6_detected_epoch = int(e6_detected[0]) // EKF_OBS_PER_EPOCH
+    e6_burn_epoch = int(np.searchsorted(np.array(e6_times), e6_burn_dt))
+    assert e6_detected.size >= 1 and e6_detected_epoch - e6_burn_epoch <= 5
+    assert len(e6_res.delta_v_estimates) == 1
+    e6_dv_err = float(
+        np.linalg.norm(e6_res.delta_v_estimates[0].delta_v - e6_burn_dv)
+    )
+    assert e6_dv_err < 5e-4
+    assert e6_pos_err < 0.01
+    assert not e6_res.augmented_active_final
+    cases.append(
+        make_case(
+            case_id="ekf_maneuver_detection",
+            module="od_ekf",
+            function="ekf_solve",
+            inputs={
+                "epoch_jd": r17(ekf_epoch_jd),
+                "observations": _bake_obs_flat(e6_obs),
+                "state_guess": r17_array(e6_guess),
+                "truth_state_final": r17_array(e6_truth_final),
+                "burn_dt_s": r17(e6_burn_dt),
+                "burn_dv": r17_array(e6_burn_dv),
+            },
+            config=_bake_ekf_cfg(e6_cfg),
+            expected=_bake_ekf_expected(e6_res),
+            tolerances=_ekf_tols(),
+            meta={
+                "source": "helio_ob",
+                "reference": "helio.od_ekf.ekf_solve",
+                "note": "E6: 1 m/s prograde burn at t=60 s detected via "
+                "NIS streak (consec=2, reentry=6); dv accuracy bound is "
+                "the documented 20-50 percent observability ceiling",
+                "pos_err_max_km": 0.01,
+                "dv_err_max_kms": 5e-4,
+                "detect_lag_max_epochs": 5,
+                "burn_epoch_index": e6_burn_epoch,
+            },
+        )
+    )
+
+    # E6b: end-of-arc forced contraction (helio
+    # test_maneuver_final_forced_contraction): reentry window never
+    # elapses; augmented_active_final true; final covariance 6x6.
+    e6b_cfg = HEKFConfig(
+        process=HProcessNoiseConfig(q_a=0.0, q_a_maneuver=1e-9),
+        maneuver=HManeuverConfig(
+            estimate_maneuver=True,
+            consecutive_exceedances=2,
+            reentry_window_obs=10_000,
+        ),
+    )
+    e6b_res = h_ekf_solve(e6_obs, e6_guess, ekf_epoch_jd, e6b_cfg)
+    assert e6b_res.augmented_active_final
+    assert len(e6b_res.delta_v_estimates) == 1
+    e6b_dv_err = float(
+        np.linalg.norm(e6b_res.delta_v_estimates[0].delta_v - e6_burn_dv)
+    )
+    assert e6b_dv_err < 5e-4
+    assert e6b_res.final_covariance.shape == (6, 6)
+    cases.append(
+        make_case(
+            case_id="ekf_maneuver_forced_contraction",
+            module="od_ekf",
+            function="ekf_solve",
+            inputs={
+                "epoch_jd": r17(ekf_epoch_jd),
+                "observations": _bake_obs_flat(e6_obs),
+                "state_guess": r17_array(e6_guess),
+                "truth_state_final": r17_array(e6_truth_final),
+                "burn_dt_s": r17(e6_burn_dt),
+                "burn_dv": r17_array(e6_burn_dv),
+            },
+            config=_bake_ekf_cfg(e6b_cfg),
+            expected=_bake_ekf_expected(e6b_res),
+            tolerances=_ekf_tols(),
+            meta={
+                "source": "helio_ob",
+                "reference": "helio.od_ekf.ekf_solve",
+                "note": "E6b: reentry_window_obs=10000 never elapses on "
+                "this arc; final forced contraction stores the dv "
+                "estimate and returns a 6x6 covariance",
+                "dv_err_max_kms": 5e-4,
+                "augmented_active_final": True,
+            },
+        )
+    )
+
+    # E7: divergence recovery + negative control (helio
+    # test_divergence_recovery): unmodeled burn, no maneuver
+    # estimation, sustained_nis_count=5.
+    e7_truth = e1_truth
+    e7_obs = _ekf_make_arc(
+        e7_truth, e6_times, EKF_ALL_STATIONS, burn_dt=e6_burn_dt,
+        burn_dv=e6_burn_dv,
+    )
+    e7_guess = _ekf_offset_guess(e7_truth)
+    e7_cfg = HEKFConfig(
+        process=HProcessNoiseConfig(q_a=0.0),
+        recovery=HRecoveryConfig(sustained_nis_count=5),
+    )
+    e7_res = h_ekf_solve(e7_obs, e7_guess, ekf_epoch_jd, e7_cfg)
+    e7_truth_final = _ekf_truth_state(
+        e7_truth, e6_times[-1], e6_burn_dt, e6_burn_dv
+    )
+    e7_pos_err, e7_vel_err = _ekf_pos_vel_err(e7_res.state_hist[-1, :6], e7_truth_final)
+    assert e7_res.divergence_flag and e7_res.n_recoveries >= 1
+    assert e7_pos_err < 0.5
+    # Negative control: unreachable sustained count never recovers.
+    e7_ctrl_cfg = HEKFConfig(
+        process=HProcessNoiseConfig(q_a=0.0),
+        recovery=HRecoveryConfig(sustained_nis_count=10_000),
+    )
+    e7_ctrl_res = h_ekf_solve(e7_obs, e7_guess, ekf_epoch_jd, e7_ctrl_cfg)
+    e7_ctrl_pos_err, _ = _ekf_pos_vel_err(
+        e7_ctrl_res.state_hist[-1, :6], e7_truth_final
+    )
+    assert not e7_ctrl_res.divergence_flag
+    assert e7_ctrl_pos_err > 1.0
+    e7_expected = _bake_ekf_expected(e7_res)
+    e7_expected["control_final_state"] = r17_array(e7_ctrl_res.state_hist[-1, :6])
+    cases.append(
+        make_case(
+            case_id="ekf_divergence_recovery",
+            module="od_ekf",
+            function="ekf_solve",
+            inputs={
+                "epoch_jd": r17(ekf_epoch_jd),
+                "observations": _bake_obs_flat(e7_obs),
+                "state_guess": r17_array(e7_guess),
+                "truth_state_final": r17_array(e7_truth_final),
+                "control_config": _bake_ekf_cfg(e7_ctrl_cfg),
+            },
+            config=_bake_ekf_cfg(e7_cfg),
+            expected=e7_expected,
+            tolerances=_ekf_tols(),
+            meta={
+                "source": "helio_ob",
+                "reference": "helio.od_ekf.ekf_solve",
+                "note": "E7: unmodeled 1 m/s burn with no maneuver "
+                "estimation; sustained NIS streak (count=5) triggers "
+                "whole-matrix inflation + position/velocity floors; "
+                "control with unreachable count never recovers",
+                "pos_err_max_km": 0.5,
+                "n_recoveries_min": 1,
+                "control_pos_err_min_km": 1.0,
+            },
+        )
+    )
+
     return cases
 
 

@@ -11,7 +11,7 @@ export interface SampleTLE {
   category: 'LEO' | 'MEO' | 'GEO' | 'HEO' | 'DEBRIS'
 }
 
-export type AnalysisTool = 'maneuver' | 'lambert' | 'conjunction' | 'groundtrack' | 'passpredict' | 'montecarlo' | 'coverage' | 'eclipse' | 'gaussiod' | 'batchod'
+export type AnalysisTool = 'maneuver' | 'lambert' | 'conjunction' | 'groundtrack' | 'passpredict' | 'montecarlo' | 'coverage' | 'eclipse' | 'gaussiod' | 'batchod' | 'ekfod'
 
 // =============================================================================
 // SGP4 Input (used by TLE parser)
@@ -367,4 +367,156 @@ export interface BatchTsResult {
   statusMessage: string
   /** Full residual table, one entry per original scalar row. */
   residuals: BatchResidualRow[]
+}
+
+// =============================================================================
+// Sequential EKF OD (Phase 4) Types
+// =============================================================================
+
+/** EKFError status codes (matches C++ orbit::EKFError). */
+export const EKF_STATUS = {
+  OK: 0,
+  ERROR_INPUT: 1,
+  ERROR_INTEGRATION: 2,
+  ERROR_DIVERGENCE: 3,
+} as const
+
+/** Narrowed union of the EKF status codes. */
+export type EkfStatus = (typeof EKF_STATUS)[keyof typeof EKF_STATUS]
+
+/** Human-readable message for each EKF status code. */
+export const EKF_STATUS_MESSAGES: Record<number, string> = {
+  [EKF_STATUS.OK]: 'EKF solve completed',
+  [EKF_STATUS.ERROR_INPUT]:
+    'Bad input: empty/unsorted observations, AZ_EL rows, non-positive sigmas, or invalid config',
+  [EKF_STATUS.ERROR_INTEGRATION]:
+    'Variational propagation failed during the filter run',
+  [EKF_STATUS.ERROR_DIVERGENCE]:
+    'Non-finite state or covariance detected after a predict',
+}
+
+/** Continuous white-noise acceleration process noise (matches C++ ProcessNoiseConfig). */
+export interface ProcessNoiseConfigTs {
+  /** 6D-mode Wiener acceleration PSD [km^2/s^5]. */
+  qA: number
+  /** 9D augmented-mode PSD [km^2/s^5]. */
+  qAManeuver: number
+}
+
+/** Maneuver detection, estimation, and scheduling settings (matches C++ ManeuverConfig). */
+export interface ManeuverConfigTs {
+  /** Enter 9D augmented mode on detection. */
+  estimateManeuver: boolean
+  /** Gate threshold in Gaussian sigmas (the NIS gate is its square). */
+  nisSigmaThreshold: number
+  /** Consecutive gated-exceedance epochs that flag a maneuver. */
+  consecutiveExceedances: number
+  /** Augmented-mode epochs before forced contraction back to 6D. */
+  reentryWindowObs: number
+  /** Velocity 1-sigma inflation [km/s] applied at scheduled burns. */
+  scheduledInflateKms: number
+}
+
+/** Divergence detection and covariance recovery settings (matches C++ RecoveryConfig). */
+export interface RecoveryConfigTs {
+  /** Consecutive NIS-exceedance epochs that count as divergence. */
+  sustainedNisCount: number
+  /** Whole-matrix covariance inflation factor (> 1). */
+  inflateFactor: number
+}
+
+/** Sequential EKF configuration (matches C++ orbit::EKFConfig, 6D mode). */
+export interface EkfTsConfig {
+  /** Process noise settings. */
+  process: ProcessNoiseConfigTs
+  /** Maneuver detection / estimation settings. */
+  maneuver: ManeuverConfigTs
+  /** Divergence recovery settings. */
+  recovery: RecoveryConfigTs
+  /** Initial covariance diagonal [km^2, km^2/s^2] (exactly 6 values). */
+  p0Diag: number[]
+  /** Force model tier: 0 = two-body, 1 = J2. */
+  forceTier: number
+}
+
+/** One known impulsive burn applied during the EKF predict step. */
+export interface ScheduledManeuver {
+  /** Burn epoch [Julian Date, days]; must fall inside the observation arc. */
+  epochJd: number
+  /** Impulsive dv [km/s, ECI] added to the velocity state. */
+  dv: [number, number, number]
+}
+
+/** One stored delta-v estimate from an augmented-mode (9D) episode. */
+export interface ManeuverRecordTs {
+  /** Detection epoch [Julian Date, days] stamped with the estimate. */
+  epochJd: number
+  /** Estimated dv [km/s, ECI] folded back into the state on contraction. */
+  dv: [number, number, number]
+}
+
+/** Per-observation-step history row from a sequential EKF run. */
+export interface EkfStepRow {
+  /** Observation epoch [Julian Date, days]. */
+  timeJd: number
+  /** Source observation type of this step. */
+  obsType: ODObservationType
+  /** Physical ECI state after the update [km, km/s] (6 values). */
+  state: number[]
+  /** Post-update formal sigmas of the congruence-transformed covariance [km, km/s] (6 values). */
+  sigmas: number[]
+  /** Per-row normalized innovation squared (nu^2 / S); null for the NaN-padded slot of scalar observations. */
+  nis: [number | null, number | null]
+  /** Per-row innovation (measured minus predicted); null for the NaN-padded slot. */
+  innovation: [number | null, number | null]
+  /** Per-row gate mask (true = update applied). */
+  updatedMask: [boolean, boolean]
+  /** True when this step was flagged as a maneuver or carried a scheduled burn. */
+  maneuverFlag: boolean
+}
+
+/** Aggregate diagnostics from a sequential EKF run (result header fields). */
+export interface EkfStatsTs {
+  /** Number of observation steps processed. */
+  nObs: number
+  /** True scalar rows (sum of observation ndim). */
+  nRows: number
+  /** Scalar rows whose update was applied. */
+  nUpdated: number
+  /** Scalar rows skipped by the NIS gate. */
+  nGated: number
+  /** True when sustained-NIS divergence was ever detected. */
+  divergenceFlag: boolean
+  /** Covariance inflation recoveries performed. */
+  nRecoveries: number
+  /** True when the arc ended while still in 9D augmented mode. */
+  augmentedActiveFinal: boolean
+  /** Mean NIS over true scalar rows. */
+  nisMean: number
+  /** Max NIS over true scalar rows. */
+  nisMax: number
+  /** True rows with NIS above the gate. */
+  nNisExceed: number
+  /** Stored maneuver records returned by the kernel. */
+  nManeuvers: number
+}
+
+/** Typed result of a sequential EKF OD solve (6D mode with optional 9D episodes). */
+export interface EkfTsResult {
+  /** Final ECI state at the last observation / epoch [km, km/s] (6 values). */
+  finalState: number[]
+  /** diag of the final 6x6 covariance [km^2, km^2/s^2] (6 values). */
+  finalCovDiag: number[]
+  /** Final 6x6 covariance, row-major (36 values). */
+  finalCov: number[]
+  /** Per-step history, one entry per observation step. */
+  steps: EkfStepRow[]
+  /** Stored delta-v estimates from augmented-mode episodes. */
+  maneuverRecords: ManeuverRecordTs[]
+  /** Aggregate run diagnostics. */
+  stats: EkfStatsTs
+  /** EKFError status code (see EKF_STATUS). */
+  errorStatus: number
+  /** Human-readable status message. */
+  statusMessage: string
 }

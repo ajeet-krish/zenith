@@ -9,6 +9,7 @@ import { MonteCarloPanel } from './MonteCarloPanel';
 import { CoveragePanel } from './CoveragePanel';
 import { IodPanel } from './IodPanel';
 import { BatchPanel } from './BatchPanel';
+import { EkfPanel } from './EkfPanel';
 import type { AnalysisTool } from '@/orbit/types';
 
 interface ToolSection {
@@ -28,6 +29,7 @@ const TOOLS: ToolSection[] = [
   { id: 'coverage', label: 'WALKER CONSTELLATION', component: <CoveragePanel /> },
   { id: 'gaussiod', label: 'GAUSS IOD', component: <IodPanel /> },
   { id: 'batchod', label: 'BATCH OD', component: <BatchPanel /> },
+  { id: 'ekfod', label: 'EKF OD', component: <EkfPanel /> },
 ];
 
 /**

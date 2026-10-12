@@ -40,6 +40,7 @@
 #include "zenith/partials.hpp"
 #include "zenith/iod_gauss.hpp"
 #include "zenith/od_batch.hpp"
+#include "zenith/od_ekf.hpp"
 
 using namespace emscripten;
 
@@ -901,6 +902,232 @@ val od_batch_solve_js(val obs_flat, val state6, double epoch_jd,
 }
 
 // =============================================================================
+// Orbit Determination (Phase 4): Sequential EKF Orbit Determination
+// =============================================================================
+// WASM flat-array layouts (tech-lead Phase 4 design):
+//   od_ekf_solve obs table: same Phase 3 SoA record layout as
+//     od_batch_solve ([time_jd(1), sta_pos_eci(3), sta_vel_eci(3),
+//     obs_type(1), ndim(1), values(ndim), sigmas(ndim)] per record;
+//     9 + 2*ndim doubles). Station ECI geometry is PRE-RESOLVED by the
+//     caller via od_station_position_eci / od_station_velocity_eci.
+//     obs_type: 0=RANGE, 1=RANGE_RATE, 2=RA_DEC (3=AZ_EL rejected).
+//   od_ekf_solve state6: 6 doubles [rx, ry, rz, vx, vy, vz] ECI guess
+//     at epoch_jd [km, km/s].
+//   od_ekf_solve config16: 16 doubles
+//     {q_a, q_a_maneuver, estimate_maneuver (0/1), nis_sigma_threshold,
+//      consecutive_exceedances, reentry_window_obs, scheduled_inflate_kms,
+//      sustained_nis_count, inflate_factor, p0_diag(6),
+//      force_tier (0=two-body, 1=J2)}.
+//     Pass an empty array for defaults; short arrays apply partially
+//     over defaults (od_ekf parse_ekf_config_flat).
+//   od_ekf_solve burns: 4*n_burns doubles {epoch_jd, dv_x, dv_y, dv_z}
+//     per scheduled burn (ascending epochs; null/empty for none). A
+//     burn exactly at epoch_jd is silently skipped (fold into state6).
+//   od_ekf_solve result: flat array
+//     Header (60 doubles):
+//       [0] error (EKFError int: 0=OK, 1=ERROR_INPUT,
+//           2=ERROR_INTEGRATION, 3=ERROR_DIVERGENCE),
+//       [1] n_obs, [2] n_rows (true scalar rows), [3] n_updated,
+//       [4] n_gated, [5] divergence_flag (0/1), [6] n_recoveries,
+//       [7] augmented_active_final (0/1), [8] nis_mean, [9] nis_max,
+//       [10] n_nis_exceed, [11] n_maneuvers,
+//       [12..17] final_state(6) [km, km/s],
+//       [18..23] final_cov_diag(6),
+//       [24..59] final_cov(36 row-major).
+//     Payload (present whenever the obs table parsed; N = n_obs):
+//       obs_times(N), obs_types(N int codes), maneuver_flag(N 0/1),
+//       state_hist(N*6, row-major physical state),
+//       sigma_hist(N*6, row-major post-update sigmas),
+//       innovations(2*N PADDED: step k component i at index 2k+i; the
+//         second slot of a scalar observation is NaN),
+//       nis(2*N padded, NaN pad), updated_mask(2*N 0/1 padded),
+//       maneuver_records(n_maneuvers * 4 {epoch_jd, dv(3)}).
+//     Malformed / oversized obs tables return the 60-double header only
+//     (status at [0], rest zeroed). status codes: see orbit::EKFError.
+//   od_ekf_config_defaults: 16 doubles in config16 order.
+
+/// Upper bound on observation records accepted by od_ekf_solve
+/// (defense-in-depth against pathological JS inputs).
+constexpr int kMaxEkfObsRecords = 10000;
+
+/// Upper bound on scheduled burns accepted by od_ekf_solve
+/// (defense-in-depth against pathological JS inputs).
+constexpr int kMaxScheduledBurns = 100;
+
+/// 60-double result header with the given status at [0] followed by 59
+/// zeros (malformed / oversized input path). Status lands at the same
+/// [0] slot the normal serializer writes, so every result honors the
+/// documented header layout above.
+val od_ekf_error_header(orbit::EKFError status) {
+    val out = val::array();
+    out.call<void>("push", static_cast<double>(status));
+    for (int i = 0; i < 59; ++i) {
+        out.call<void>("push", 0.0);
+    }
+    return out;
+}
+
+/// Default EKF configuration as a flat 16-double array (config16
+/// layout above).
+val od_ekf_config_defaults_js() {
+    orbit::EKFConfig cfg;
+    val out = val::array();
+    out.call<void>("push", cfg.process.q_a);
+    out.call<void>("push", cfg.process.q_a_maneuver);
+    out.call<void>("push", cfg.maneuver.estimate_maneuver ? 1.0 : 0.0);
+    out.call<void>("push", cfg.maneuver.nis_sigma_threshold);
+    out.call<void>("push",
+                   static_cast<double>(cfg.maneuver.consecutive_exceedances));
+    out.call<void>("push", static_cast<double>(cfg.maneuver.reentry_window_obs));
+    out.call<void>("push", cfg.maneuver.scheduled_inflate_kms);
+    out.call<void>("push", static_cast<double>(cfg.recovery.sustained_nis_count));
+    out.call<void>("push", cfg.recovery.inflate_factor);
+    for (double v : cfg.p0_diag) {
+        out.call<void>("push", v);
+    }
+    out.call<void>("push", static_cast<double>(cfg.force_tier));
+    return out;
+}
+
+/// Sequential EKF orbit determination (Phase 4).
+///
+/// @param obs_flat    Observation table (flat array; Phase 3 layout).
+///                    Zero observations or tables with more than
+///                    kMaxEkfObsRecords records return status
+///                    ERROR_INPUT with the empty header.
+/// @param state6      ECI state guess at epoch_jd (6 doubles).
+/// @param epoch_jd    Filter epoch as Julian Date [days].
+/// @param config16    Config array (16 doubles; defaults when shorter).
+/// @param burns_flat  Scheduled burns (4 doubles each; null/empty for
+///                    none; must be ascending by epoch). More than
+///                    kMaxScheduledBurns records returns status
+///                    ERROR_INPUT with the error header.
+/// @return Flat result array per the layout above, or null if state6
+///         does not have length 6.
+val od_ekf_solve_js(val obs_flat, val state6, double epoch_jd,
+                    val config16, val burns_flat) {
+    if (state6["length"].as<int>() != 6) {
+        return val::null();
+    }
+
+    const int obs_len = obs_flat["length"].as<int>();
+    std::vector<double> obs_buf(static_cast<std::size_t>(obs_len));
+    for (int i = 0; i < obs_len; ++i) {
+        obs_buf[static_cast<std::size_t>(i)] = obs_flat[i].as<double>();
+    }
+
+    // Record-count cap (defense-in-depth): walk record HEADERS only,
+    // before the full parse. Malformed tails fall through to
+    // parse_obs_flat's own rejection below.
+    int n_records = 0;
+    for (int i = 0; i < obs_len;) {
+        if (obs_len - i < 9) break;
+        const int ndim =
+            static_cast<int>(obs_buf[static_cast<std::size_t>(i + 8)]);
+        if (ndim != 1 && ndim != 2) break;  // malformed; full parse rejects
+        i += 9 + 2 * ndim;
+        if (++n_records > kMaxEkfObsRecords) {
+            return od_ekf_error_header(orbit::EKFError::ERROR_INPUT);
+        }
+    }
+
+    const orbit::BatchObsTable table =
+        orbit::parse_obs_flat(obs_buf.data(), obs_buf.size());
+    if (!table.ok) {
+        return od_ekf_error_header(orbit::EKFError::ERROR_INPUT);
+    }
+
+    double guess[6];
+    for (int i = 0; i < 6; ++i) {
+        guess[i] = state6[i].as<double>();
+    }
+
+    orbit::EKFConfig config;
+    const int cfg_len = config16["length"].as<int>();
+    if (cfg_len > 0) {
+        double cfg_buf[16] = {0.0};
+        for (int i = 0; i < cfg_len && i < 16; ++i) {
+            cfg_buf[i] = config16[i].as<double>();
+        }
+        orbit::parse_ekf_config_flat(
+            cfg_buf, static_cast<std::size_t>(std::min(cfg_len, 16)), config);
+    }
+
+    std::vector<orbit::ScheduledBurn> burns;
+    if (!burns_flat.isNull() && !burns_flat.isUndefined()) {
+        const int burns_len = burns_flat["length"].as<int>();
+        // Burn-count cap (defense-in-depth): reject pathological JS
+        // inputs before the full parse (parse_burns_flat consumes
+        // whole 4-double records only).
+        if (burns_len / 4 > kMaxScheduledBurns) {
+            return od_ekf_error_header(orbit::EKFError::ERROR_INPUT);
+        }
+        std::vector<double> burns_buf(static_cast<std::size_t>(burns_len));
+        for (int i = 0; i < burns_len; ++i) {
+            burns_buf[static_cast<std::size_t>(i)] = burns_flat[i].as<double>();
+        }
+        burns = orbit::parse_burns_flat(burns_buf.data(), burns_buf.size());
+    }
+
+    const orbit::EKFResult res =
+        orbit::ekf_solve(table.obs, guess, epoch_jd, config, burns);
+
+    val out = val::array();
+    out.call<void>("push", static_cast<double>(res.error));
+    out.call<void>("push", static_cast<double>(res.n_obs));
+    out.call<void>("push", static_cast<double>(res.n_rows));
+    out.call<void>("push", static_cast<double>(res.n_updated));
+    out.call<void>("push", static_cast<double>(res.n_gated));
+    out.call<void>("push", res.divergence_flag ? 1.0 : 0.0);
+    out.call<void>("push", static_cast<double>(res.n_recoveries));
+    out.call<void>("push", res.augmented_active_final ? 1.0 : 0.0);
+    out.call<void>("push", res.nis_mean);
+    out.call<void>("push", res.nis_max);
+    out.call<void>("push", static_cast<double>(res.n_nis_exceed));
+    out.call<void>("push", static_cast<double>(res.maneuver_records.size()));
+    for (double v : res.final_state) {
+        out.call<void>("push", v);
+    }
+    for (double v : res.final_cov_diag) {
+        out.call<void>("push", v);
+    }
+    for (double v : res.final_cov) {
+        out.call<void>("push", v);
+    }
+    for (double v : res.obs_times) {
+        out.call<void>("push", v);
+    }
+    for (int t : res.obs_types) {
+        out.call<void>("push", static_cast<double>(t));
+    }
+    for (bool f : res.maneuver_flag) {
+        out.call<void>("push", f ? 1.0 : 0.0);
+    }
+    for (double v : res.state_hist) {
+        out.call<void>("push", v);
+    }
+    for (double v : res.sigma_hist) {
+        out.call<void>("push", v);
+    }
+    for (double v : res.innovations) {
+        out.call<void>("push", v);
+    }
+    for (double v : res.nis) {
+        out.call<void>("push", v);
+    }
+    for (bool m : res.updated_mask) {
+        out.call<void>("push", m ? 1.0 : 0.0);
+    }
+    for (const orbit::ManeuverRecord& rec : res.maneuver_records) {
+        out.call<void>("push", rec.epoch_jd);
+        for (double v : rec.dv) {
+            out.call<void>("push", v);
+        }
+    }
+    return out;
+}
+
+// =============================================================================
 // Embind Registration
 // =============================================================================
 
@@ -930,4 +1157,6 @@ EMSCRIPTEN_BINDINGS(zenith) {
     function("od_gauss_iod", &od_gauss_iod_js);
     function("od_batch_config_defaults", &od_batch_config_defaults_js);
     function("od_batch_solve", &od_batch_solve_js);
+    function("od_ekf_config_defaults", &od_ekf_config_defaults_js);
+    function("od_ekf_solve", &od_ekf_solve_js);
 }

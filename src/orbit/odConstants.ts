@@ -5,7 +5,7 @@
 // wasm/src/zenith/stations.hpp) and helio_ob so golden-master fixtures agree.
 
 import { DEG_TO_RAD, MU_EARTH, RAD_TO_DEG } from './constants'
-import type { BatchTsConfig, GaussIodConfig, ObsConfig } from './types'
+import type { BatchTsConfig, EkfTsConfig, GaussIodConfig, ObsConfig } from './types'
 
 // =============================================================================
 // Estimator Default Measurement Sigmas
@@ -61,6 +61,34 @@ export const DEFAULT_BATCH_CONFIG: BatchTsConfig = {
   editMaxFraction: 0.1,
   editMaxRounds: 3,
   enableEditing: true,
+}
+
+// =============================================================================
+// Sequential EKF OD Defaults (Phase 4)
+// =============================================================================
+
+/**
+ * Default sequential EKF configuration (matches C++ orbit::EKFConfig).
+ * Values ported verbatim from helio_ob so golden-master fixtures agree.
+ */
+export const DEFAULT_EKF_CONFIG: EkfTsConfig = {
+  process: {
+    qA: 1.0e-10,
+    qAManeuver: 1.0e-6,
+  },
+  maneuver: {
+    estimateManeuver: false,
+    nisSigmaThreshold: 5.0,
+    consecutiveExceedances: 3,
+    reentryWindowObs: 20,
+    scheduledInflateKms: 1.0e-4,
+  },
+  recovery: {
+    sustainedNisCount: 10,
+    inflateFactor: 100.0,
+  },
+  p0Diag: [1.0, 1.0, 1.0, 1.0e-6, 1.0e-6, 1.0e-6],
+  forceTier: 1,
 }
 
 // =============================================================================

@@ -71,7 +71,7 @@ const OBS_TYPE_NDIM: Record<ODObservationType, number> = {
 }
 
 /** obs_type integer -> observation type name (inverse of OBS_TYPE_CODE). */
-const OBS_TYPE_NAME: Record<number, ODObservationType> = {
+export const OBS_TYPE_NAME: Record<number, ODObservationType> = {
     0: 'range',
     1: 'range_rate',
     2: 'ra_dec',
@@ -96,6 +96,38 @@ function resolve_station_handle(station_id: string): number | null {
     }
     const station = useODStore.getState().stations.find((s) => s.id === station_id)
     return station?.handle ?? null
+}
+
+/**
+ * Resolve store-format observations into records with station ECI geometry
+ * pre-computed at each observation epoch. Shared by the batch LSQ (Phase 3)
+ * and sequential EKF (Phase 4) wrappers: both kernels take the same Phase 3
+ * obs table and never see station handles. Returns null when any values or
+ * sigmas are shorter than the type's ndim, a stationId cannot be resolved
+ * to a WASM handle, or the station geometry call fails.
+ */
+export function resolveBatchObservationInputs(
+    observations: ODObservation[]
+): BatchObservationInput[] | null {
+    const records: BatchObservationInput[] = []
+    for (const obs of observations) {
+        const ndim = OBS_TYPE_NDIM[obs.obsType]
+        if (obs.values.length < ndim || obs.sigmas.length < ndim) return null
+        const handle = resolve_station_handle(obs.stationId)
+        if (handle == null) return null
+        const pos = stationPositionEci(handle, obs.timeJd)
+        const vel = stationVelocityEci(handle, obs.timeJd)
+        if (!pos || !vel) return null
+        records.push({
+            timeJd: obs.timeJd,
+            staPosEci: pos,
+            staVelEci: vel,
+            obsType: obs.obsType,
+            values: obs.values.slice(0, ndim),
+            sigmas: obs.sigmas.slice(0, ndim),
+        })
+    }
+    return records
 }
 
 // =============================================================================
@@ -326,24 +358,8 @@ export function runBatchSolve(input: BatchSolveInput): BatchTsResult | null {
 
     // Resolve station ECI geometry at each observation epoch and pack the
     // obs table (9 header + 2*ndim doubles per record).
-    const records: BatchObservationInput[] = []
-    for (const obs of observations) {
-        const ndim = OBS_TYPE_NDIM[obs.obsType]
-        if (obs.values.length < ndim || obs.sigmas.length < ndim) return null
-        const handle = resolve_station_handle(obs.stationId)
-        if (handle == null) return null
-        const pos = stationPositionEci(handle, obs.timeJd)
-        const vel = stationVelocityEci(handle, obs.timeJd)
-        if (!pos || !vel) return null
-        records.push({
-            timeJd: obs.timeJd,
-            staPosEci: pos,
-            staVelEci: vel,
-            obsType: obs.obsType,
-            values: obs.values.slice(0, ndim),
-            sigmas: obs.sigmas.slice(0, ndim),
-        })
-    }
+    const records = resolveBatchObservationInputs(observations)
+    if (!records) return null
     const obs_flat = packBatchObsTable(records)
 
     const cfg = { ...DEFAULT_BATCH_CONFIG, ...input.config }
