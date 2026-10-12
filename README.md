@@ -3,7 +3,7 @@
 [![React 19](https://img.shields.io/badge/React-19-61dafb.svg?logo=react&logoColor=white)](https://react.dev/)
 [![C++](https://img.shields.io/badge/C%2B%2B-20-00599C.svg?logo=cplusplus&logoColor=white)](https://isocpp.org/)
 
-Zenith is an interactive satellite mission planner and orbital mechanics educational tool. Propagate orbits with SGP4, plan Hohmann transfers, screen conjunctions, run Monte Carlo analysis, and design Walker constellations, all in the browser.
+Zenith is an interactive satellite mission planner and orbital mechanics educational tool. Propagate orbits with SGP4, determine orbits from ground-station tracking observations, plan Hohmann transfers, screen conjunctions, run Monte Carlo analysis, and design Walker constellations, all in the browser.
 
 #### Features
 - **SGP4/SDP4 Propagation** via a C++ WASM engine
@@ -18,6 +18,9 @@ Zenith is an interactive satellite mission planner and orbital mechanics educati
 - **Pass Predictor** for ground station visibility windows with AOS/LOS times
 - **Monte Carlo Uncertainty Propagation** with scatter cloud and 3D uncertainty ellipsoid
 - **Walker Delta Constellation Designer** for multi-plane constellation generation
+- **Orbit Determination Pipeline**: Gauss angles-only initial orbit determination, batch least-squares refinement, and a sequential extended Kalman filter
+- **Observation Import and Simulation**: CSV/JSON observation files, configurable ground stations, and a seeded tracking-arc simulator
+- **OD 3D Visualization**: estimated trajectory overlay, 3-sigma covariance ellipsoids, ground station markers, and station LOS rays
 - **Real-time 3D Visualization** with React Three Fiber, orbit camera, and category-coded satellites
 - **Mission Export/Import** for saving and sharing configurations as JSON
 
@@ -159,6 +162,36 @@ Design satellite constellations using the Walker Delta pattern (i:T/P/F). Config
 
 *Walker Delta constellation rendered in 3D with multiple orbital planes and satellite markers.*
 
+### Orbit Determination
+
+Zenith includes a complete angles-only orbit determination pipeline, ported from the Helio (helio_ob) Python reference toolkit and validated against golden-master fixtures. Four panels at the bottom of the right sidebar analysis stack form the workflow:
+
+1. **Observations**: define ground stations (quick-add Goldstone, Arecibo, and Tromsoe, or add custom lat/lon/altitude entries) and import observations from CSV/JSON. Scene toggles in this panel overlay the OD trajectory, 3-sigma covariance ellipsoid, ground station markers, and station-to-satellite LOS rays on the 3D Earth.
+2. **Gauss IOD**: initial orbit determination from three RA/Dec angle pairs (multiple epochs from one station or several stations) via the classical Gauss method with Herrick-Gibbs velocity estimation. Reports ranges, recovered state, and geometry conditioning with warnings for ill-conditioned arcs. A "Simulate From Truth" helper fills RA/Dec rows from the selected satellite for demos.
+3. **Batch OD**: iterative Gauss-Newton least squares with optional Bayesian a-priori constraints, 3-sigma residual editing with warm restarts, and formal covariance. Generate a seeded simulated tracking arc (arc length, cadence, angular noise) or seed the initial guess from the Gauss IOD solution. Results include post-fit residuals, per-component formal sigmas, and a normalized residual plot.
+4. **EKF OD**: sequential extended Kalman filter with per-observation NIS innovation gating, maneuver detection via a 9D augmented state (estimate an unmodeled velocity change), scheduled burn support, and divergence recovery with covariance inflation. Also includes the simulated arc generator. Plots NIS against the gate, formal sigmas over time, and residuals.
+
+Observations can be imported as CSV or JSON. The CSV header line is:
+
+```
+epoch_jd,station,obs_type,value1,value2,sigma1,sigma2
+```
+
+with `obs_type` one of `range` (value1 = km), `range_rate` (value1 = km/s), or `ra_dec` (value1 = RA rad, value2 = Dec rad). The JSON form embeds optional station definitions:
+
+```json
+{
+  "observations": [
+    { "epoch_jd": 2460310.5, "station": "goldstone", "obs_type": "range", "values": [1523.412] }
+  ],
+  "stations": [
+    { "name": "goldstone", "lat_rad": 0.6187, "lon_rad": -2.0387, "alt_km": 1.0 }
+  ]
+}
+```
+
+Unknown station names found in a file are added to the station list automatically. The pipeline estimates one satellite at a time: select a satellite, load or simulate observations, then run Gauss IOD, refine with Batch OD, and track it continuously with the EKF.
+
 ### Keyboard Shortcuts
 
 | Key | Action |
@@ -202,8 +235,9 @@ npm run preview        # Preview the production build locally
 ### Run Tests
 
 ```bash
-npm run test           # Run all tests
+npm run test           # Run all TypeScript tests
 npm run test:watch     # Watch mode
+npm run test:native    # Native C++ GoogleTest suite (requires cmake)
 ```
 
 ### Build WASM Module (Optional)
@@ -227,6 +261,13 @@ zenith-web/
     orbit/              # Orbital mechanics engine
       wasmLoader.ts     # WASM init + TS fallback propagator
       analysisLoader.ts # WASM/TS analysis wrappers
+      stations.ts       # OD ground station handles + TS geometry fallback
+      observations.ts   # Observation prediction, partials, simulator
+      iodGauss.ts       # Gauss IOD + Herrick-Gibbs TS wrappers
+      odBatch.ts        # Batch least-squares TS wrapper (flat-array codecs)
+      odEkf.ts          # Extended Kalman filter TS wrapper (flat-array codecs)
+      observationImport.ts # CSV/JSON observation parsing
+      covarianceUtils.ts # 3x3 eigen decomposition for covariance ellipsoids
       types.ts          # TypeScript type definitions
       constants.ts      # Physics constants (MU_EARTH, R_EARTH, J2)
       sampleTles.ts     # Sample TLE data for demo
@@ -235,6 +276,7 @@ zenith-web/
     store/
       useMissionStore.ts    # Zustand store: satellites, time, propagation
       useAnalysisStore.ts   # Zustand store: analysis results, tool state
+      useODStore.ts         # Zustand store: stations, observations, OD results
     components/
       scene/            # React Three Fiber 3D components
         OrbitScene.tsx      # Main 3D canvas
@@ -244,20 +286,32 @@ zenith-web/
         CameraController.tsx # Orbit camera with fly-to animation
         GroundTrackLine.tsx # Ground track on Earth surface
         TransferOrbitPath.tsx # Dashed Hohmann transfer orbit
+        OdTrajectoryOverlay.tsx # Estimated orbit (EKF path or batch state)
+        CovarianceEllipsoid.tsx # 3-sigma position uncertainty ellipsoid
+        GroundStationMarkers.tsx # Ground station markers
+        ObservationLosRays.tsx # Station-to-satellite LOS rays
       ui/               # 2D UI panels
         SatelliteList.tsx   # Satellite list sidebar
         TLEInput.tsx        # TLE input modal
         TimeControls.tsx    # Play/pause/speed controls
         PropagationPanel.tsx # Method and force model config
         SatelliteInfo.tsx   # Selected satellite details
+        StatusBar.tsx       # Status bar with OBS/STA counts and solve chips
+        ResidualPlot.tsx    # OD residual scatter plot
+        CovariancePlot.tsx  # Formal sigma history plot
+        NisPlot.tsx         # NIS vs gate plot
         ResizeHandle.tsx    # Draggable panel divider
       analysis/         # Analysis tool panels
-        AnalysisPanel.tsx   # Tabbed analysis container
+        AnalysisPanel.tsx   # Collapsible analysis container
         ManeuverPanel.tsx   # Hohmann transfer planner
         GroundTrackPanel.tsx # Ground track controls
         ConjunctionPanel.tsx # Conjunction screening
         MonteCarloPanel.tsx  # Monte Carlo configuration
         CoveragePanel.tsx    # Walker constellation designer
+        ObservationPanel.tsx # Ground stations, observation import, scene layers
+        IodPanel.tsx        # Gauss angles-only initial orbit determination
+        BatchPanel.tsx      # Batch least-squares OD
+        EkfPanel.tsx        # Sequential EKF OD
     hooks/
       useKeyboardShortcuts.ts # Global keyboard handler
     utils/
@@ -268,9 +322,19 @@ zenith-web/
   wasm/                 # C++ to WASM build
     CMakeLists.txt      # Emscripten CMake config
     build.sh            # Build script
+    tests/              # Native GoogleTest suite (npm run test:native)
     src/
-      exports.cpp       # Emscripten embind bindings (10 functions)
-      zenith/           # 14 C++ headers (header-only)
+      exports.cpp       # Emscripten embind bindings (27 functions)
+      zenith/           # 22 C++ headers (header-only)
+        od_batch.hpp    # Batch least-squares OD (golden-master Helio port)
+        od_ekf.hpp      # Sequential EKF OD (NIS gating, 9D maneuvers)
+        iod_gauss.hpp   # Gauss IOD + Herrick-Gibbs
+        observations.hpp # Measurement prediction, partials, simulator
+        stations.hpp    # Ground station ECI geometry (GMST-only frame)
+        ...             # SGP4, Lambert, conjunction, Monte Carlo, etc.
+  fixtures/
+    od/                 # Golden-master JSON fixtures exported from Helio
+      index.json        # Manifest: 27 cases with provenance (git rev)
   public/
     wasm/               # Compiled WASM output
       zenith.js         # JS glue code
@@ -306,6 +370,23 @@ State Vectors (TEME frame, km/km/s)
         |-- Conjunction Screening -> miss distance + risk level
         |-- Monte Carlo -> scatter cloud + uncertainty ellipsoid
         |-- Walker Constellation -> coverage analysis
+
+Observations (CSV/JSON import or seeded simulator)
+  |
+  v
+Gauss IOD (od_gauss_iod) -> initial state estimate + conditioning
+  |
+  v
+Batch OD / EKF OD (od_batch_solve, od_ekf_solve)
+  |-- WASM path: WASM kernels with flat-array codecs
+  |-- TS path: graceful degradation when WASM is unavailable
+  |
+  v
+Estimated State + Covariance
+  +---> OdTrajectoryOverlay (EKF filter path or batch estimated orbit)
+  +---> CovarianceEllipsoid (3-sigma position uncertainty)
+  +---> GroundStationMarkers + ObservationLosRays
+  +---> ResidualPlot / CovariancePlot / NisPlot
 ```
 
 ---
@@ -320,6 +401,17 @@ All implementations are validated against published reference data.
 - **Kepler propagation**: < 0.001% energy conservation over one orbit
 - **TLE parser**: Checksum validation against NORAD reference format
 - **Coordinate transforms**: TEME to geodetic lat/lon for ground tracks
+- **Orbit determination**: 27 golden-master fixture cases exported from the Helio (helio_ob) Python reference implementation, replayed by both the native C++ suite and the vitest fixture schema tests. Fixtures pin the reference git revision in `fixtures/od/index.json` and cover Kepler solving, J2 STM propagation, force Jacobians, measurement partials, station geometry, GMST, observation prediction, Gauss IOD (LEO/MEO/GEO, 1-3 stations, noisy seed 42), Herrick-Gibbs, batch least-squares (noise-free, noisy, editing, a-priori, J2 truth, IOD refinement), and EKF (noise-free, noisy, gaps, outlier gating, scheduled maneuvers, maneuver detection, forced contraction, divergence recovery).
+
+### Scope and Simplifications
+
+Zenith is a browser educational and portfolio tool, not operational flight software. The orbit determination pipeline deliberately keeps the same modeling scope as the Helio reference implementation:
+
+- **GMST-only frames**: station ECI geometry uses a pure GMST rotation (UT1 approximated by UTC), aligned with the TEME-style frame used by the 3D scene. No precession, nutation, or polar motion modeling.
+- **UT1 = UTC**: Earth rotation uses UTC in place of UT1 (no dut1 correction).
+- **Estimation force models**: two-body or J2 dynamics in the batch and EKF solvers (SGP4 remains the separate scene propagation path). A single-layer exponential atmosphere model exists in the force library, but the drag estimator is not wired into the solvers (6D state mode only).
+- **Single satellite**: one satellite is estimated at a time against one or more ground stations.
+- **No light-time iteration or relativistic corrections** in measurement prediction.
 
 ---
 
@@ -335,30 +427,34 @@ All implementations are validated against published reference data.
 | **Styling** | Tailwind CSS 3 (Dracula dark theme) |
 | **Build** | Vite 6 |
 | **WASM** | Emscripten 6.0 (C++ to WebAssembly) |
-| **Physics** | Zenith C++ core (14 header-only modules) |
-| **Testing** | Vitest 5, @testing-library/react |
+| **Physics** | Zenith C++ core (22 header-only modules) |
+| **Testing** | Vitest 5, @testing-library/react, GoogleTest 1.15 (native) |
 | **Language** | TypeScript (frontend), C++20 (WASM backend) |
 
 ---
 
 ## Testing
 
-229 tests across 14 test files covering:
+639 TypeScript tests across 35 test files, plus 115 native C++ GoogleTest tests across 9 files:
 
 | Module | Tests | Coverage |
 |--------|-------|----------|
-| TLE Parser | 39 | Checksum, field extraction, epoch conversion, batch parsing |
-| WASM Loader | 23 | Init, propagation, elements, fallback behavior |
-| Constants | 16 | All 15 physics constants + conversion identities |
-| Sample TLEs | 18 | Data integrity, lookups, category filtering |
-| Zustand Store | 39 | All store actions, state transitions, color mapping |
-| Orbit Trail | 12 | Trail computation, axis mapping, scale factors |
-| UI Components | 58 | SatelliteList, TimeControls, PropagationPanel, SatelliteInfo, TLEInput |
-| Analysis Loader | 5 | Hohmann TS fallback, WASM delegation |
+| TLE Parser | 44 | Checksum, field extraction, epoch conversion, batch parsing |
+| WASM Loader | 35 | Init, propagation, elements, fallback behavior |
+| Constants + Sample TLEs | 34 | Physics constants, conversions, sample catalog integrity |
+| Zustand Stores | 115 | Mission, analysis, and OD store actions and state transitions |
+| Orbit Utilities | 32 | Orbit trails, time formatting, mission export/import |
+| UI Components | 100 | Satellite list, TLE input, time/propagation panels, status bar, residual/covariance/NIS plots |
+| OD Panels | 50 | Observations, Gauss IOD, Batch OD, EKF OD panel flows |
+| OD Kernel Wrappers | 204 | Stations, observations, import, Gauss IOD, batch, EKF, covariance, fixture schemas |
+| Scene + Hooks + Loader | 25 | Trajectory overlay, covariance ellipsoid, keyboard shortcuts, analysis loader fallback |
+
+The native suite (`npm run test:native`) runs the C++ kernels directly under GoogleTest, including replay of all 27 golden-master OD fixtures from `fixtures/od/`.
 
 ```bash
-npm run test           # Run all tests
+npm run test           # Run all TypeScript tests
 npm run test:watch     # Watch mode
+npm run test:native    # Native C++ GoogleTest suite (requires cmake)
 ```
 
 ---

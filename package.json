@@ -11,6 +11,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:native": "cmake -S wasm/tests -B build-native-tests && cmake --build build-native-tests -j && ctest --test-dir build-native-tests --output-on-failure",
+    "bench:od": "cmake -S wasm/tests -B build-bench -DCMAKE_BUILD_TYPE=Release && cmake --build build-bench -j --target bench_od && ./build-bench/bench_od",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "typecheck": "tsc --noEmit",
     "wasm:build": "cd wasm && bash build.sh"

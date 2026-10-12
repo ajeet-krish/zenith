@@ -17,8 +17,19 @@ if [ -z "$PYTHON" ]; then
     exit 1
 fi
 
-# Check for Emscripten
-EMSCRIPTEN_DIR="${EMSCRIPTEN_DIR:-/opt/homebrew/Cellar/emscripten/6.0.9_1/libexec}"
+# Check for Emscripten. Override with EMSCRIPTEN_DIR env var; otherwise
+# discover the newest installed Homebrew version, falling back to a known path.
+if [ -z "${EMSCRIPTEN_DIR:-}" ]; then
+    EMSCRIPTEN_DIR=""
+    for dir in $(ls -1v /opt/homebrew/Cellar/emscripten/*/libexec 2>/dev/null); do
+        if [ -f "$dir/emcc.py" ]; then
+            EMSCRIPTEN_DIR="$dir"
+        fi
+    done
+    if [ -z "$EMSCRIPTEN_DIR" ]; then
+        EMSCRIPTEN_DIR="/opt/homebrew/Cellar/emscripten/6.0.10_1/libexec"
+    fi
+fi
 if [ ! -f "$EMSCRIPTEN_DIR/emcc.py" ]; then
     echo "Error: Emscripten not found at $EMSCRIPTEN_DIR"
     echo "Set EMSCRIPTEN_DIR or install emscripten via: brew install emscripten"

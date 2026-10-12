@@ -52,9 +52,16 @@ add_executable(ZenithTests
     test_od_fixtures.cpp
 )
 
+# Phase 6 OD performance benchmark (standalone main, no gtest/json
+# dependency). Not registered with ctest; run via `npm run bench:od` or
+# ./build-native-tests/bench_od after building the bench_od target.
+add_executable(bench_od bench_od.cpp)
+
 # Headers live under wasm/src and are included as "zenith/xxx.hpp".
 target_include_directories(ZenithTests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../src)
 target_link_libraries(ZenithTests PRIVATE GTest::gtest_main nlohmann_json::nlohmann_json)
+
+target_include_directories(bench_od PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../src)
 
 # Absolute path to the golden-master fixture directory (native-only; the
 # compiled WASM never ships fixtures).
